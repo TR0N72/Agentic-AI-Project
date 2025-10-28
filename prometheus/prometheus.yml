@@ -1,0 +1,23 @@
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'fastapi-services'
+    static_configs:
+      - targets: [
+          'api_gateway:8000',
+          'auth:8001',
+          'user:8002',
+          'data:8003',
+          'question:8004',
+          'assessment:8005',
+          'embedding:8006',
+          'agent_orchestrator:8007',
+          'analytics:8008',
+          'notification:8009'
+        ]
