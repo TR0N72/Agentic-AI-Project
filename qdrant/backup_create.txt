@@ -1,0 +1,20 @@
+kalo create_collections gagal, pake ini
+
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from config import QDRANT_CONFIG
+
+client = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"])
+
+collections = [
+    "pinterin_materials_embeddings",
+    "pinterin_questions_embeddings"
+]
+
+for col in collections:
+    client.recreate_collection(
+        collection_name=col,
+        vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE)
+    )
+
+print("✅ Koleksi Qdrant untuk Pinterin berhasil dibuat.")
