@@ -1,0 +1,9 @@
+disclaimer, ini coba dipake kalo yang ada itu ga bisa 
+
+from qdrant_client import QdrantClient
+from config import QDRANT_CONFIG
+
+qdrant_client = QdrantClient(
+    host=QDRANT_CONFIG["host"],
+    port=QDRANT_CONFIG["port"]
+)
