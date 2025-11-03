@@ -26,7 +26,7 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --timeout=600 -r requirements.txt
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn --no-cache-dir --timeout=600 -r requirements.txt
 
 # Production stage
 FROM python:3.11.10-slim AS production

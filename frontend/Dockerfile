@@ -1,23 +1,30 @@
-# Use an official Node.js runtime as a parent image
-FROM node:22-alpine
+# --- Build Stage ---
+# Use a Node.js image with build tools
+FROM node:22-alpine AS builder
 
-# Set the working directory in the container
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package.json and package-lock.json to leverage Docker cache
+# Copy package files and install dependencies
+# This layer is cached and only re-runs if package files change
 COPY package*.json ./
-
-# Install app dependencies
 RUN npm install --legacy-peer-deps
 
-# Bundle app source
+# Copy the rest of the source code
 COPY . .
 
-# Build the app
+# Build the application
 RUN npm run build
 
-# The server will run on port 3000
-EXPOSE 3000
+# --- Production Stage ---
+# Use a lightweight web server to serve the static files
+FROM nginx:stable-alpine
 
-# Command to run the app
-CMD [ "npm", "start" ]
+# Copy the built assets from the "builder" stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy the nginx config
+COPY netlify.toml /etc/nginx/conf.d/default.conf
+
+# Expose port 80 and start nginx
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

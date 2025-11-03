@@ -1,9 +1,46 @@
-FROM python:3.11-slim-bookworm
+# --- Builder Stage ---
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /app
 
-COPY . /app
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-RUN pip install --timeout=600 -r requirements.txt
+# Create a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
+# Copy requirements and install dependencies into the venv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- Production Stage ---
+FROM python:3.11-slim-bookworm AS production
+
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy the application code
+COPY . .
+
+# Create a non-root user and switch to it
+RUN addgroup --system app && adduser --system --group app
+USER app
+
+# Expose the port
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD [ "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 8000); conn.request('GET', '/health'); exit(0) if conn.getresponse().status == 200 else exit(1)" ]
+
+# Run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
