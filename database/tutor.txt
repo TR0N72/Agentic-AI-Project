@@ -1,0 +1,264 @@
+TUTORIAL DATABASE SETUP – SMART LEARNING AGENTIC AI (SAT)
+============================================================
+
+📘 TUJUAN
+----------
+Dokumen ini menjelaskan langkah lengkap untuk menyiapkan *database layer*
+sistem Smart Learning Agentic AI for SAT menggunakan Python, PostgreSQL,
+dan Qdrant. Fokus sistem ini adalah sinkronisasi dua arah antara penyimpanan
+offline (PostgreSQL) dan penyimpanan embedding vektor (Qdrant).
+
+============================================================
+📂 STRUKTUR PROYEK
+============================================================
+
+smart_learning_db/
+│
+├── config.py
+├── requirements.txt
+│
+├── postgres/
+│   ├── schema.sql
+│   ├── postgres_client.py
+│   ├── insert_mock_data.py
+│   ├── mock_data.sql
+│   └── __init__.py
+│
+└── qdrant/
+    ├── qdrant_client.py
+    ├── create_collections.py
+    ├── sync_from_postgres.py
+    └── __init__.py
+
+
+============================================================
+🔧 PERSIAPAN LINGKUNGAN
+============================================================
+
+1. Pastikan Python 3.10+ sudah terpasang
+2. Install PostgreSQL dan Qdrant:
+   - PostgreSQL: https://www.postgresql.org/download/
+   - Qdrant: https://qdrant.tech/documentation/quick-start/
+
+3. Buat database PostgreSQL:
+   ```bash
+   psql -U postgres
+   CREATE DATABASE smart_learning;
+   ```
+
+4. Buat environment Python:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate   # Linux/Mac
+   venv\Scripts\activate    # Windows
+   ```
+
+5. Install dependency:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+
+============================================================
+⚙️ FILE: config.py
+============================================================
+
+Berisi konfigurasi global untuk koneksi ke PostgreSQL dan Qdrant.
+
+```python
+import os
+
+POSTGRES_CONFIG = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": os.getenv("POSTGRES_PORT", "5432"),
+    "database": os.getenv("POSTGRES_DB", "smart_learning"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres")
+}
+
+QDRANT_CONFIG = {
+    "host": os.getenv("QDRANT_HOST", "localhost"),
+    "port": os.getenv("QDRANT_PORT", "6333")
+}
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_API_KEY_HERE")
+```
+
+
+============================================================
+🧱 FILE: postgres/schema.sql
+============================================================
+
+File SQL berisi seluruh struktur tabel utama seperti users, topics,
+materials, questions, generated_questions, user_progress, user_answers, evaluations.
+
+Setelah diisi, jalankan:
+```bash
+psql -U postgres -d smart_learning -f postgres/schema.sql
+```
+
+
+============================================================
+📄 FILE: postgres/insert_mock_data.py
+============================================================
+
+Digunakan untuk menambahkan data awal (mock data) ke database.
+
+```python
+import psycopg2
+from config import POSTGRES_CONFIG
+
+def execute_sql_file(filename):
+    conn = psycopg2.connect(**POSTGRES_CONFIG)
+    cur = conn.cursor()
+
+    with open(filename, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    try:
+        cur.execute(sql)
+        conn.commit()
+        print("✅ Mock data berhasil dimasukkan ke PostgreSQL.")
+    except Exception as e:
+        conn.rollback()
+        print("❌ Terjadi kesalahan saat insert mock data:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+if __name__ == "__main__":
+    execute_sql_file("postgres/mock_data.sql")
+```
+
+
+============================================================
+🧠 FILE: qdrant/qdrant_client.py
+============================================================
+
+Menyiapkan koneksi ke Qdrant dan fungsi dasar seperti insert dan query vektor.
+
+```python
+from qdrant_client import QdrantClient
+from config import QDRANT_CONFIG
+
+client = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"])
+```
+
+
+============================================================
+💾 FILE: qdrant/create_collections.py
+============================================================
+
+Membuat koleksi untuk embeddings materi dan soal.
+
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from config import QDRANT_CONFIG
+
+client = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"])
+
+collections = ["materials_embeddings", "questions_embeddings"]
+
+for col in collections:
+    client.recreate_collection(
+        collection_name=col,
+        vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE)
+    )
+print("✅ Koleksi Qdrant berhasil dibuat.")
+```
+
+
+============================================================
+🤝 FILE: qdrant/sync_from_postgres.py
+============================================================
+
+Sinkronisasi data dari PostgreSQL ke Qdrant dengan OpenAI embedding.
+
+```python
+import psycopg2
+from openai import OpenAI
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from config import POSTGRES_CONFIG, QDRANT_CONFIG, OPENAI_API_KEY
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+qdrant = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"])
+
+def fetch_text_data():
+    conn = psycopg2.connect(**POSTGRES_CONFIG)
+    cur = conn.cursor()
+    cur.execute("SELECT material_id, content FROM materials WHERE embedding_id IS NULL;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+def generate_embedding(text):
+    response = client.embeddings.create(input=text, model="text-embedding-3-small")
+    return response.data[0].embedding
+
+def sync_materials():
+    data = fetch_text_data()
+    if not data:
+        print("Tidak ada data baru untuk disinkronkan.")
+        return
+
+    for mat_id, content in data:
+        embedding = generate_embedding(content)
+        qdrant.upsert(
+            collection_name="materials_embeddings",
+            points=[models.PointStruct(id=mat_id, vector=embedding)]
+        )
+        print(f"✅ Material {mat_id} berhasil dikirim ke Qdrant.")
+
+if __name__ == "__main__":
+    sync_materials()
+```
+
+
+============================================================
+🪄 CARA MENJALANKAN SISTEM DATABASE
+============================================================
+
+1. **Buat schema PostgreSQL**
+   ```bash
+   psql -U postgres -d smart_learning -f postgres/schema.sql
+   ```
+
+2. **Masukkan mock data**
+   ```bash
+   python postgres/insert_mock_data.py
+   ```
+
+3. **Buat koleksi di Qdrant**
+   ```bash
+   python qdrant/create_collections.py
+   ```
+
+4. **Sinkronkan data ke Qdrant**
+   ```bash
+   python qdrant/sync_from_postgres.py
+   ```
+
+
+============================================================
+🔁 ARSITEKTUR KERJA DUA ARAH
+============================================================
+
+📤 PostgreSQL → Qdrant
+   - Menyimpan teks (materi, soal)
+   - Sinkronisasi embedding ke Qdrant
+
+📥 Qdrant → PostgreSQL
+   - Hasil pencarian semantik (misal soal mirip) dapat mengembalikan `id`
+     yang dikirim kembali ke PostgreSQL untuk ambil metadata, evaluasi, dan
+     history user.
+
+============================================================
+✅ SELESAI
+============================================================
+
+Sekarang database layer Smart Learning Agentic AI kamu sudah siap digunakan
+oleh tim backend. PostgreSQL menyimpan struktur dan riwayat, Qdrant menyimpan
+embedding, dan library embedding berperan menghasilkan vektor untuk konteks semantik.

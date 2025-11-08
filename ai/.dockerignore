@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Local environment files
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Documentation
+docs/
+
+# Logs
+logs/
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db

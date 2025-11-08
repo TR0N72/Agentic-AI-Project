@@ -1,0 +1,14 @@
+ini ada 3 file yang gw gatau make yang mana
+
+create_collections
+sync_from_postgres
+qdrant_client
+
+3 file di atas ini gpt gw blunder
+
+coba lu run dulu
+kalo ga bisa, lu ganti 3 file itu pake back up
+
+harus ganti 3 3 nya, karena importnya dia beda
+jadi ganti 1, ganti semua
+tapi coba coba aja dulu 

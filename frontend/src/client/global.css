@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Poppins:wght@400;600;700&family=Roboto:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Pinterin color scheme and theme variables
+   * Based on the Figma design specifications
+   */
+  :root {
+    --background: 50 50% 99%; /* #FFFDF6 - cream background */
+    --foreground: 217 55% 20%; /* #10284B - dark blue text */
+
+    --card: 0 0% 100%; /* white cards */
+    --card-foreground: 217 55% 20%; /* dark blue text on cards */
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 55% 20%;
+
+    --primary: 246 75% 47%; /* #381FD1 - purple primary */
+    --primary-foreground: 0 0% 100%; /* white text on primary */
+
+    --secondary: 211 38% 50%; /* #486284 - muted blue */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 211 38% 50%; /* #486284 */
+
+    --accent: 246 75% 47%; /* #381FD1 */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214.3 31.8% 91.4%; /* #DEE5ED */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 246 75% 47%;
+
+    --radius: 0.5rem;
+
+    /* Pinterin specific colors */
+    --pinterin-cream: 50 50% 99%; /* #FFFDF6 */
+    --pinterin-dark-blue: 217 55% 20%; /* #10284B */
+    --pinterin-blue: 217 72% 25%; /* #0C3875 */
+    --pinterin-purple: 246 75% 47%; /* #381FD1 */
+    --pinterin-muted: 211 38% 50%; /* #486284 */
+    --pinterin-border: 214 30% 87%; /* #DEE5ED */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .bg-opacity-43 {
+    background-color: rgba(0, 0, 0, 0.43);
+  }
+}

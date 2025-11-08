@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# Node modules
+node_modules
+npm-debug.log
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Local environment files
+.env
+
+# Build output
+dist/
+
+# OS-specific
+.DS_Store
+Thumbs.db

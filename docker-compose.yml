@@ -1,0 +1,496 @@
+
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:13
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dbname
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - main_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: [
+      "redis-server",
+      "--appendonly", "yes",
+      "--appendfsync", "everysec",
+      "--maxmemory", "256mb",
+      "--maxmemory-policy", "allkeys-lru",
+      "--save", "900 1",
+      "--save", "300 10",
+      "--save", "60 10000"
+    ]
+    volumes:
+      - redis_data:/data
+      - ./ai/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - main_network
+
+  rabbitmq:
+    image: rabbitmq:3.9-management-alpine
+    container_name: rabbitmq_broker
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - main_network
+
+  consul:
+    image: consul:1.10
+    container_name: consul_discovery
+    ports:
+      - "8500:8500"
+    networks:
+      - main_network
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.3
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - main_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ai/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - main_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./ai/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json:ro
+      - ./ai/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - main_network
+
+  # Application Services
+  api_gateway:
+    build: ./backend/src/api_gateway
+    container_name: api_gateway_service
+    ports:
+      - "8000:8000"
+    environment:
+      - CONTAINER_NAME=api_gateway_service
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend/src/api_gateway:/app
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  auth:
+    build: ./backend/src/auth
+    container_name: auth_service
+    ports:
+      - "8001:8001"
+    environment:
+      - CONTAINER_NAME=auth_service
+      - SECRET_KEY=a-very-secret-key
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      - ./backend/src/auth:/app
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  user:
+    build: ./backend/src/user
+    container_name: user_service
+    ports:
+      - "8002:8002"
+    environment:
+      - CONTAINER_NAME=user_service
+      - DB_HOST=postgres
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=dbname
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+    volumes:
+      - ./backend/src/user:/app
+    depends_on:
+      - consul
+      - postgres
+    networks:
+      - main_network
+
+  data:
+    build: ./backend/src/data
+    container_name: data_service
+    ports:
+      - "8003:8003"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=dbname
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+    volumes:
+      - ./backend/src/data:/app
+    depends_on:
+      - consul
+      - postgres
+    networks:
+      - main_network
+
+  question:
+    build: ./backend/src/question
+    container_name: question_service
+    ports:
+      - "8004:8004"
+    environment:
+      - CONTAINER_NAME=question_service
+      - DB_HOST=postgres
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=dbname
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq_broker
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
+    volumes:
+      - ./backend/src/question:/app
+    depends_on:
+      - consul
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - main_network
+
+  assessment:
+    build: ./backend/src/assessment
+    container_name: assessment_service
+    ports:
+      - "8005:8005"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=dbname
+    command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
+    volumes:
+      - ./backend/src/assessment:/app
+    depends_on:
+      - consul
+      - postgres
+    networks:
+      - main_network
+
+  embedding:
+    build: ./backend/src/embedding
+    container_name: embedding_service
+    ports:
+      - "8006:8006"
+    environment:
+      - CONTAINER_NAME=embedding_service
+      - QDRANT_HOST=qdrant
+    command: uvicorn main:app --host 0.0.0.0 --port 8006 --reload
+    volumes:
+      - ./backend/src/embedding:/app
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  agent_orchestrator:
+    build: ./backend/src/agent_orchestrator
+    container_name: agent_orchestrator_service
+    ports:
+      - "8007:8007"
+    environment:
+      - CONTAINER_NAME=agent_orchestrator_service
+      - RABBITMQ_HOST=rabbitmq_broker
+    command: uvicorn main:app --host 0.0.0.0 --port 8007 --reload
+    volumes:
+      - ./backend/src/agent_orchestrator:/app
+    depends_on:
+      - consul
+      - rabbitmq
+    networks:
+      - main_network
+
+  analytics:
+    build: ./backend/src/analytics
+    container_name: analytics_service
+    ports:
+      - "8008:8008"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=dbname
+    command: uvicorn main:app --host 0.0.0.0 --port 8008 --reload
+    volumes:
+      - ./backend/src/analytics:/app
+    depends_on:
+      - consul
+      - postgres
+    networks:
+      - main_network
+
+  notification:
+    build: ./backend/src/notification
+    container_name: notification_service
+    ports:
+      - "8009:8009"
+    environment:
+      - CONTAINER_NAME=notification_service
+      - SMTP_SERVER=smtp.example.com
+      - SMTP_PORT=587
+      - SMTP_USER=user@example.com
+      - SMTP_PASSWORD=password
+    command: uvicorn main:app --host 0.0.0.0 --port 8009 --reload
+    volumes:
+      - ./backend/src/notification:/app
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  cms_admin:
+    build: ./backend/src/cms_admin
+    container_name: cms_admin_service
+    ports:
+      - "8010:8010"
+    command: uvicorn main:app --host 0.0.0.0 --port 8010 --reload
+    volumes:
+      - ./backend/src/cms_admin:/app
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  database_api:
+    build: ./database
+    container_name: database_api_service
+    ports:
+      - "8012:8012"
+    environment:
+      - CONTAINER_NAME=database_api_service
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=dbname
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: uvicorn api_main:app --host 0.0.0.0 --port 8012 --reload
+    volumes:
+      - ./database:/app
+    depends_on:
+      - consul
+      - postgres
+      - qdrant
+    networks:
+      - main_network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend_service
+    ports:
+      - "3001:3000"
+    networks:
+      - main_network
+
+  ai:
+    build:
+      context: ./ai
+      target: production
+    container_name: nlp-ai-service
+    ports:
+      - "8011:8000"
+      - "8443:8443"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_ENABLED=true
+      - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-600}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - LLM_PROVIDER_FALLBACK_ORDER=${LLM_PROVIDER_FALLBACK_ORDER:-openai,anthropic,llama}
+      - TEMPERATURE=${TEMPERATURE:-0.7}
+      - MAX_TOKENS=${MAX_TOKENS:-1000}
+      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-3.5-turbo}
+      - OPENAI_FALLBACK_MODEL=${OPENAI_FALLBACK_MODEL:-gpt-3.5-turbo-16k}
+      - PROMETHEUS_METRICS_ENDPOINT=/metrics
+      - ENABLE_METRICS=true
+      - OTEL_METRICS_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:14268/api/traces}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_SERVICE_NAMESPACE=nlp-ai
+      - SERVICE_VERSION=1.0.0
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - RATE_LIMIT_STRATEGY=${RATE_LIMIT_STRATEGY:-fixed_window}
+      - RATE_LIMIT_EXEMPT_PATHS=/health,/metrics,/docs,/openapi.json,/redoc
+      - RATE_LIMIT_USER_LIMITS=${RATE_LIMIT_USER_LIMITS:-}
+      - TLS_ENABLED=${TLS_ENABLED:-false}
+      - TLS_CERT_FILE=${TLS_CERT_FILE:-./certs/server.crt}
+      - TLS_KEY_FILE=${TLS_KEY_FILE:-./certs/server.key}
+      - TLS_CA_FILE=${TLS_CA_FILE:-./certs/ca.crt}
+      - TLS_MIN_VERSION=${TLS_MIN_VERSION:-TLSv1.2}
+      - TLS_VERIFY_CLIENT=${TLS_VERIFY_CLIENT:-false}
+      - TLS_CERT_VALIDATION=${TLS_CERT_VALIDATION:-true}
+      - ELASTIC_APM_ENABLED=${ELASTIC_APM_ENABLED:-false}
+      - ELASTIC_APM_SERVER_URL=${ELASTIC_APM_SERVER_URL:-http://elasticsearch:8200}
+      - ELASTIC_APM_SECRET_TOKEN=${ELASTIC_APM_SECRET_TOKEN:-}
+      - SERVICE_NAME=nlp-ai-microservice
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - CHROMA_PERSIST_DIRECTORY=${CHROMA_PERSIST_DIRECTORY:-/app/data/chroma}
+      - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8001}
+      - QUESTION_SERVICE_URL=${QUESTION_SERVICE_URL:-http://question-service:8002}
+      - API_GATEWAY_URL=${API_GATEWAY_URL:-http://api-gateway:8003}
+    volumes:
+      - ./ai/data:/app/data
+      - ./ai/logs:/app/logs
+      - ./ai/certs:/app/certs
+    depends_on:
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - main_network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - main_network
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./ai/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./ai/logstash/config:/usr/share/logstash/config:ro
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - main_network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - main_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - main_network
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  prometheus_data:
+  grafana_data:
+  redis_data:
+  elasticsearch_data:
+
+networks:
+  main_network:
+    driver: bridge

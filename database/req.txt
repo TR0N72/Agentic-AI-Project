@@ -1,0 +1,7 @@
+supabase
+qdrant-client==1.11.0
+python-consul
+prometheus-fastapi-instrumentator
+python-dotenv==1.0.1
+fastapi==0.111.0
+uvicorn[standard]==0.30.1

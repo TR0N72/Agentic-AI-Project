@@ -1,0 +1,52 @@
+kalo file sync_from_postgres gagal, coba pake ini 
+
+import psycopg2
+from openai import OpenAI
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from config import POSTGRES_CONFIG, QDRANT_CONFIG, OPENAI_API_KEY
+
+# Koneksi API
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+qdrant = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"])
+
+def fetch_materials():
+    conn = psycopg2.connect(**POSTGRES_CONFIG)
+    cur = conn.cursor()
+    cur.execute("SELECT material_id, content FROM materials WHERE embedding_id IS NULL;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+# Embedding generation is removed. A replacement is needed.
+def generate_embedding(text):
+    # response = openai_client.embeddings.create(input=text, model="text-embedding-3-small")
+    # return response.data[0].embedding
+    return []
+
+def sync_materials():
+    data = fetch_materials()
+    if not data:
+        print("Tidak ada data baru untuk disinkronkan.")
+        return
+
+    for material_id, content in data:
+        embedding = generate_embedding(content)
+
+        qdrant.upsert(
+            collection_name="pinterin_materials_embeddings",
+            points=[models.PointStruct(id=material_id, vector=embedding)]
+        )
+
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE materials SET embedding_id = %s WHERE material_id = %s", (material_id, material_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print(f"✅ Material {material_id} berhasil dikirim dan diperbarui di Qdrant.")
+
+if __name__ == "__main__":
+    sync_materials()
