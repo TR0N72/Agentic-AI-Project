@@ -261,4 +261,4 @@ if __name__ == "__main__":
 
 Sekarang database layer Smart Learning Agentic AI kamu sudah siap digunakan
 oleh tim backend. PostgreSQL menyimpan struktur dan riwayat, Qdrant menyimpan
-embedding, dan OpenAI berperan menghasilkan vektor untuk konteks semantik.
+embedding, dan library embedding berperan menghasilkan vektor untuk konteks semantik.

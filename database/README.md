@@ -25,7 +25,7 @@ The project uses a hybrid database architecture:
     QDRANT_HOST=localhost
     QDRANT_PORT=6333
 
-    OPENAI_API_KEY=YOUR_API_KEY_HERE
+    
     ```
 
 2.  **Install Dependencies:**
