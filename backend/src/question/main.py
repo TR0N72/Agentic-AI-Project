@@ -1,26 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 import pika
 import json
-from sqlalchemy import create_engine, Column, Integer, String, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
 import redis
-import json
 import os
 import consul
 from prometheus_fastapi_instrumentator import Instrumentator
-
-# Database setup
-DB_USER = os.getenv("DB_USER", "user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "dbname")
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+from supabase import Client
+from .dependencies import get_supabase
 
 # Redis setup
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -29,15 +15,6 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
 # RabbitMQ setup
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
-
-# Models
-class Question(Base):
-    __tablename__ = "questions"
-    id = Column(Integer, primary_key=True, index=True)
-    text = Column(String, index=True)
-    answer = Column(String)
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Question Service",
@@ -66,21 +43,13 @@ def startup_event():
 def health_check():
     return {"status": "ok"}
 
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.post("/questions/")
-def create_question(text: str, answer: str, db: Session = Depends(get_db)):
-    db_question = Question(text=text, answer=answer)
-    db.add(db_question)
-    db.commit()
-    db.refresh(db_question)
+def create_question(text: str, answer: str, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").insert({"text": text, "answer": answer}).execute()
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Failed to create question.")
+    
+    new_question = response.data[0]
 
     # Publish message to RabbitMQ
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
@@ -88,47 +57,45 @@ def create_question(text: str, answer: str, db: Session = Depends(get_db)):
     channel.queue_declare(queue='question_created')
     channel.basic_publish(exchange='',
                           routing_key='question_created',
-                          body=json.dumps({"id": db_question.id, "text": db_question.text}))
+                          body=json.dumps({"id": new_question['id'], "text": new_question['text']}))
     connection.close()
 
-    return db_question
+    return new_question
 
 @app.get("/questions/{question_id}")
-def read_question(question_id: int, db: Session = Depends(get_db)):
+def read_question(question_id: int, supabase: Client = Depends(get_supabase)):
     # Check cache first
     cached_question = redis_client.get(f"question_{question_id}")
     if cached_question:
         return json.loads(cached_question)
 
     # If not in cache, get from DB
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-    if db_question is None:
+    response = supabase.table("questions").select("*").eq("id", question_id).single().execute()
+    if not response.data:
         raise HTTPException(status_code=404, detail="Question not found")
 
+    db_question = response.data
     # Store in cache
-    redis_client.set(f"question_{question_id}", json.dumps({"id": db_question.id, "text": db_question.text, "answer": db_question.answer}))
+    redis_client.set(f"question_{question_id}", json.dumps(db_question))
     return db_question
 
 @app.put("/questions/{question_id}")
-def update_question(question_id: int, text: str, answer: str, db: Session = Depends(get_db)):
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-    if db_question is None:
+def update_question(question_id: int, text: str, answer: str, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").update({"text": text, "answer": answer}).eq("id", question_id).execute()
+    if not response.data:
         raise HTTPException(status_code=404, detail="Question not found")
-    db_question.text = text
-    db_question.answer = answer
-    db.commit()
-    db.refresh(db_question)
+
+    updated_question = response.data[0]
     # Update cache
-    redis_client.set(f"question_{question_id}", json.dumps({"id": db_question.id, "text": db_question.text, "answer": db_question.answer}))
-    return db_question
+    redis_client.set(f"question_{question_id}", json.dumps(updated_question))
+    return updated_question
 
 @app.delete("/questions/{question_id}")
-def delete_question(question_id: int, db: Session = Depends(get_db)):
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-    if db_question is None:
+def delete_question(question_id: int, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").delete().eq("id", question_id).execute()
+    if not response.data:
         raise HTTPException(status_code=404, detail="Question not found")
-    db.delete(db_question)
-    db.commit()
+
     # Delete from cache
     redis_client.delete(f"question_{question_id}")
     return {"message": "Question deleted successfully"}

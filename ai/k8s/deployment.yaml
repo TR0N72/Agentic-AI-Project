@@ -42,17 +42,11 @@ spec:
               protocol: TCP
           env:
             # API Keys and Authentication
-            - name: OPENAI_API_KEY
+            - name: GROQ_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: nlp-ai-secrets
-                  key: OPENAI_API_KEY
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: nlp-ai-secrets
-                  key: ANTHROPIC_API_KEY
-                  optional: true
+                  key: GROQ_API_KEY
             
             # Redis Configuration
             - name: REDIS_URL
@@ -64,17 +58,17 @@ spec:
             
             # LLM Configuration
             - name: DEFAULT_LLM_PROVIDER
-              value: "openai"
+              value: "groq"
             - name: LLM_PROVIDER_FALLBACK_ORDER
-              value: "openai,anthropic,llama"
+              value: "groq,llama"
             - name: TEMPERATURE
               value: "0.7"
             - name: MAX_TOKENS
               value: "1000"
-            - name: OPENAI_DEFAULT_MODEL
-              value: "gpt-3.5-turbo"
-            - name: OPENAI_FALLBACK_MODEL
-              value: "gpt-3.5-turbo-16k"
+            - name: GROQ_DEFAULT_MODEL
+              value: "llama3-8b-8192"
+            - name: GROQ_FALLBACK_MODEL
+              value: "llama3-70b-8192"
             
             # Service Configuration
             - name: SERVICE_NAME

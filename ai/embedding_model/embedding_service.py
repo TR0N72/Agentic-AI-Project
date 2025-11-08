@@ -254,8 +254,7 @@ class EmbeddingService:
         try:
             model_name = model or self.default_model
             
-            if model_name == "text-embedding-ada-002":
-                return 1536  # OpenAI ada-002 dimension
+            
             
             # For sentence transformers, get dimension from model
             model_instance = await self._load_model(model_name)

@@ -51,7 +51,7 @@ def generate_openapi_json() -> Dict[str, Any]:
             "post": {
                 "tags": ["llm"],
                 "summary": "Generate text using Large Language Models",
-                "description": "Supports multiple LLM providers including OpenAI GPT, Anthropic Claude, and local LLaMA models.",
+                "description": "Supports multiple LLM providers including Groq and local LLaMA models.",
                 "requestBody": {
                     "required": True,
                     "content": {
@@ -731,7 +731,7 @@ def generate_api_examples(output_dir: Path) -> None:
         "api_examples": {
             "llm_generate": {
                 "text": "Explain how to solve this SAT math problem: If 2x + 3y = 12 and x - y = 1, what is the value of x?",
-                "model": "gpt-3.5-turbo"
+                "model": "llama3-8b-8192"
             },
             "embedding_generate": {
                 "text": "SAT math problem about quadratic equations",

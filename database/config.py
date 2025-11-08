@@ -1,13 +1,16 @@
 import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
-# Konfigurasi PostgreSQL
-POSTGRES_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": os.getenv("POSTGRES_PORT", "5432"),
-    "database": os.getenv("POSTGRES_DB", "pinterin"),
-    "user": os.getenv("POSTGRES_USER", "postgres"),
-    "password": os.getenv("POSTGRES_PASSWORD", "postgres")
-}
+# Load environment variables from .env file
+load_dotenv()
+
+# Konfigurasi Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Inisialisasi Supabase client
+supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 # Konfigurasi Qdrant
 QDRANT_CONFIG = {
@@ -15,5 +18,4 @@ QDRANT_CONFIG = {
     "port": os.getenv("QDRANT_PORT", "6333")
 }
 
-# OpenAI API Key (untuk generate embedding)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_API_KEY_HERE")
+

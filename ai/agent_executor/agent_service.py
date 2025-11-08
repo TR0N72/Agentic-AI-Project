@@ -39,10 +39,10 @@ class AgentService:
     """
 
     def __init__(self):
-        self.llm = ChatOpenAI(
+        self.llm = ChatGroq(
             temperature=0,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            model_name="gpt-3.5-turbo"
+            groq_api_key=os.getenv("GROQ_API_KEY"),
+            model_name="llama3-8b-8192"
         )
         self.agents = {}
         self.tool_registry = None  # Will be injected from main app
@@ -53,11 +53,6 @@ class AgentService:
 
     def set_tool_registry(self, tool_registry):
         self.tool_registry = tool_registry
-
-    # ============================================================
-    # ---------------- ORIGINAL METHODS --------------------------
-    # (execute, execute_with_memory, dll. tetap dipertahankan)
-    # ============================================================
 
     async def execute(self, query: str, tools: Optional[List[str]] = None) -> Dict[str, Any]:
         try:

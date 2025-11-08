@@ -30,33 +30,16 @@ def event_loop():
 
 
 @pytest.fixture
-def mock_openai():
-    """Mock OpenAI API responses"""
-    with patch('openai.AsyncOpenAI') as mock:
+def mock_groq():
+    """Mock Groq API responses"""
+    with patch('langchain_groq.ChatGroq') as mock:
         mock_instance = MagicMock()
         mock.return_value = mock_instance
         
         # Mock completion response
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "This is a test response from OpenAI"
-        mock_instance.chat.completions.create.return_value = mock_response
-        
-        yield mock_instance
-
-
-@pytest.fixture
-def mock_anthropic():
-    """Mock Anthropic API responses"""
-    with patch('anthropic.AsyncAnthropic') as mock:
-        mock_instance = MagicMock()
-        mock.return_value = mock_instance
-        
-        # Mock message response
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock()]
-        mock_response.content[0].text = "This is a test response from Claude"
-        mock_instance.messages.create.return_value = mock_response
+        mock_response.content = "This is a test response from Groq"
+        mock_instance.ainvoke.return_value = mock_response
         
         yield mock_instance
 

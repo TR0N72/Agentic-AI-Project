@@ -2,19 +2,7 @@
 
 services:
   # Infrastructure Services
-  postgres:
-    image: postgres:13
-    container_name: postgres_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: dbname
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - main_network
+  
 
   redis:
     image: redis:7-alpine
@@ -73,12 +61,7 @@ services:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+
     networks:
       - main_network
 
@@ -158,16 +141,13 @@ services:
       - "8002:8002"
     environment:
       - CONTAINER_NAME=user_service
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
     command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
     volumes:
       - ./backend/src/user:/app
     depends_on:
       - consul
-      - postgres
     networks:
       - main_network
 
@@ -177,16 +157,14 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - CONTAINER_NAME=data_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
     command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
     volumes:
       - ./backend/src/data:/app
     depends_on:
       - consul
-      - postgres
     networks:
       - main_network
 
@@ -197,10 +175,8 @@ services:
       - "8004:8004"
     environment:
       - CONTAINER_NAME=question_service
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
       - REDIS_HOST=redis
       - RABBITMQ_HOST=rabbitmq_broker
     command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
@@ -208,7 +184,6 @@ services:
       - ./backend/src/question:/app
     depends_on:
       - consul
-      - postgres
       - redis
       - rabbitmq
     networks:
@@ -220,37 +195,19 @@ services:
     ports:
       - "8005:8005"
     environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - CONTAINER_NAME=assessment_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
     command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
     volumes:
       - ./backend/src/assessment:/app
-    depends_on:
-      - consul
-      - postgres
-    networks:
-      - main_network
-
-  embedding:
-    build: ./backend/src/embedding
-    container_name: embedding_service
-    ports:
-      - "8006:8006"
-    environment:
-      - CONTAINER_NAME=embedding_service
-      - QDRANT_HOST=qdrant
-    command: uvicorn main:app --host 0.0.0.0 --port 8006 --reload
-    volumes:
-      - ./backend/src/embedding:/app
     depends_on:
       - consul
     networks:
       - main_network
 
   agent_orchestrator:
-    build: ./backend/src/agent_orchestrator
+    build: ./ai/src/agent_orchestrator
     container_name: agent_orchestrator_service
     ports:
       - "8007:8007"
@@ -259,7 +216,7 @@ services:
       - RABBITMQ_HOST=rabbitmq_broker
     command: uvicorn main:app --host 0.0.0.0 --port 8007 --reload
     volumes:
-      - ./backend/src/agent_orchestrator:/app
+      - ./ai/src/agent_orchestrator:/app
     depends_on:
       - consul
       - rabbitmq
@@ -272,16 +229,14 @@ services:
     ports:
       - "8008:8008"
     environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - CONTAINER_NAME=analytics_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
     command: uvicorn main:app --host 0.0.0.0 --port 8008 --reload
     volumes:
       - ./backend/src/analytics:/app
     depends_on:
       - consul
-      - postgres
     networks:
       - main_network
 
@@ -324,19 +279,15 @@ services:
       - "8012:8012"
     environment:
       - CONTAINER_NAME=database_api_service
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=dbname
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
     command: uvicorn api_main:app --host 0.0.0.0 --port 8012 --reload
     volumes:
       - ./database:/app
     depends_on:
       - consul
-      - postgres
       - qdrant
     networks:
       - main_network
@@ -354,22 +305,22 @@ services:
     build:
       context: ./ai
       target: production
+
     container_name: nlp-ai-service
     ports:
       - "8011:8000"
       - "8443:8443"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_ENABLED=true
       - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-600}
-      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
-      - LLM_PROVIDER_FALLBACK_ORDER=${LLM_PROVIDER_FALLBACK_ORDER:-openai,anthropic,llama}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-groq}
+      - LLM_PROVIDER_FALLBACK_ORDER=${LLM_PROVIDER_FALLBACK_ORDER:-groq,llama}
       - TEMPERATURE=${TEMPERATURE:-0.7}
       - MAX_TOKENS=${MAX_TOKENS:-1000}
-      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-3.5-turbo}
-      - OPENAI_FALLBACK_MODEL=${OPENAI_FALLBACK_MODEL:-gpt-3.5-turbo-16k}
+      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-llama3-8b-8192}
+      - GROQ_FALLBACK_MODEL=${GROQ_FALLBACK_MODEL:-llama3-70b-8192}
       - PROMETHEUS_METRICS_ENDPOINT=/metrics
       - ENABLE_METRICS=true
       - OTEL_METRICS_ENABLED=true
@@ -405,13 +356,9 @@ services:
       - ./ai/data:/app/data
       - ./ai/logs:/app/logs
       - ./ai/certs:/app/certs
-    depends_on:
-      redis:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -484,7 +431,6 @@ services:
       - main_network
 
 volumes:
-  postgres_data:
   qdrant_data:
   prometheus_data:
   grafana_data:

@@ -724,8 +724,7 @@ kubectl create namespace nlp-ai
 
 # Create secrets
 kubectl create secret generic nlp-ai-secrets \
-  --from-literal=OPENAI_API_KEY=your_openai_key \
-  --from-literal=ANTHROPIC_API_KEY=your_anthropic_key \
+  --from-literal=GROQ_API_KEY=your_groq_key \
   --namespace=nlp-ai
 ```
 

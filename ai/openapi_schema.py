@@ -309,8 +309,8 @@ def get_openapi_schema() -> Dict[str, Any]:
 
             ### Key Features
 
-            * **LLM Integration**: Support for OpenAI GPT, Anthropic Claude, and local LLaMA models
-            * **Text Embeddings**: Generate embeddings using Sentence Transformers and OpenAI Ada
+            * **LLM Integration**: Support for Groq and local LLaMA models
+            * **Text Embeddings**: Generate embeddings using Sentence Transformers
             * **Vector Search**: Hybrid search combining BM25 (Elasticsearch) and semantic search (Qdrant)
             * **Agent Execution**: AI agents with tool integration for complex problem solving
             * **Educational Content**: Specialized support for SAT/UTBK questions and materials

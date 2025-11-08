@@ -56,8 +56,7 @@ metadata:
 type: Opaque
 data:
   # Base64 encoded values - replace with actual encoded secrets
-  OPENAI_API_KEY: eW91cl9vcGVuYWlfYXBpX2tleV9oZXJl
-  ANTHROPIC_API_KEY: eW91cl9hbnRocm9waWNfYXBpX2tleV9oZXJl
+  GROQ_API_KEY: Z3NrX0g0N3Y3Vk5mRzFRYkNBTSAyYnJLV0dkeWIzRllRV0F5SkVWdkJtMWJJT0tyWldSS2pCaFA=
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -77,8 +76,8 @@ data:
   REDIS_CACHE_TTL_SECONDS: "600"
   
   # LLM Configuration
-  DEFAULT_LLM_PROVIDER: "openai"
-  LLM_PROVIDER_FALLBACK_ORDER: "openai,anthropic,llama"
+  DEFAULT_LLM_PROVIDER: "groq"
+  LLM_PROVIDER_FALLBACK_ORDER: "groq,llama"
   TEMPERATURE: "0.7"
   MAX_TOKENS: "1000"
   

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import List, Set, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 
 class UserRole(str, Enum):
@@ -126,16 +126,25 @@ class RolePermissions:
         ]
 
 
-class User(BaseModel):
-    """User model with roles and permissions."""
-    id: str = Field(..., description="User ID")
-    email: str = Field(..., description="User email")
+class UserBase(BaseModel):
+    email: EmailStr = Field(..., description="User email")
     username: Optional[str] = Field(None, description="Username")
+
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8, description="User password")
+
+
+class User(UserBase):
+    id: int = Field(..., description="User ID")
+    is_active: bool = Field(True, description="Whether user is active")
     roles: List[UserRole] = Field(default_factory=list, description="User roles")
     permissions: List[Permission] = Field(default_factory=list, description="User permissions")
-    is_active: bool = Field(True, description="Whether user is active")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional user metadata")
-    
+
+    class Config:
+        from_attributes = True
+
     def has_role(self, role: UserRole) -> bool:
         """Check if user has a specific role."""
         return role in self.roles
@@ -167,6 +176,15 @@ class User(BaseModel):
         for role in self.roles:
             all_permissions.update(RolePermissions.get_permissions(role))
         return all_permissions
+
+
+class UserInDB(User):
+    hashed_password: str = Field(..., description="Hashed password")
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 
 class TokenPayload(BaseModel):

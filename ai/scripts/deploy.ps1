@@ -154,8 +154,7 @@ function Deploy-Kubernetes {
     if (-not $secretExists) {
         Write-Warning "Creating secrets. Please update with your actual API keys."
         kubectl create secret generic nlp-ai-secrets `
-            --from-literal=OPENAI_API_KEY=your_openai_key_here `
-            --from-literal=ANTHROPIC_API_KEY=your_anthropic_key_here `
+            --from-literal=GROQ_API_KEY=your_groq_key_here `
             --namespace=$Namespace
     }
     

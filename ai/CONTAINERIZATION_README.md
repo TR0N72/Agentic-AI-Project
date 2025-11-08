@@ -118,8 +118,8 @@ kubectl get pods -n nlp-ai
 |----------|-------------|---------|
 | `REDIS_CACHE_ENABLED` | Enable Redis caching | `true` |
 | `REDIS_CACHE_TTL_SECONDS` | Cache TTL in seconds | `600` |
-| `DEFAULT_LLM_PROVIDER` | Primary LLM provider | `openai` |
-| `LLM_PROVIDER_FALLBACK_ORDER` | Fallback order | `openai,anthropic,llama` |
+| `DEFAULT_LLM_PROVIDER` | Primary LLM provider | `groq` |
+| `LLM_PROVIDER_FALLBACK_ORDER` | Fallback order | `groq,llama` |
 | `HPA_CPU_TARGET` | HPA CPU target % | `70` |
 | `HPA_MEMORY_TARGET` | HPA memory target % | `80` |
 

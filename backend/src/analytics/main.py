@@ -1,33 +1,11 @@
 
-from fastapi import FastAPI, Depends
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from fastapi import FastAPI, HTTPException, Depends
 from datetime import datetime
 import os
 import consul
 from prometheus_fastapi_instrumentator import Instrumentator
-
-# Database setup
-DB_USER = os.getenv("DB_USER", "user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "dbname")
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Models
-class UserActivity(Base):
-    __tablename__ = "user_activities"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
-    activity = Column(String, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-
-Base.metadata.create_all(bind=engine)
+from supabase import Client
+from .dependencies import get_supabase
 
 app = FastAPI(
     title="Analytics Service",
@@ -56,24 +34,37 @@ def startup_event():
 def health_check():
     return {"status": "ok"}
 
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.post("/activities/")
-def log_activity(user_id: int, activity: str, db: Session = Depends(get_db)):
-    db_activity = UserActivity(user_id=user_id, activity=activity)
-    db.add(db_activity)
-    db.commit()
-    db.refresh(db_activity)
-    return db_activity
+def log_activity(user_id: int, activity: str, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("user_activities").insert({
+        "user_id": user_id,
+        "activity": activity,
+        "timestamp": datetime.utcnow().isoformat()
+    }).execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Failed to log activity.")
+        
+    return response.data[0]
 
 @app.get("/analytics/")
-def get_analytics(db: Session = Depends(get_db)):
-    analytics = db.query(UserActivity.activity, func.count(UserActivity.activity)).group_by(UserActivity.activity).all()
-    return {activity: count for activity, count in analytics}
+def get_analytics(supabase: Client = Depends(get_supabase)):
+    # This endpoint assumes you have created a PostgreSQL function in your Supabase
+    # database called 'get_activity_analytics'.
+    #
+    # CREATE OR REPLACE FUNCTION get_activity_analytics()
+    # RETURNS TABLE(activity TEXT, count BIGINT) AS $
+    # BEGIN
+    #     RETURN QUERY
+    #     SELECT ua.activity, COUNT(ua.activity)
+    #     FROM user_activities ua
+    #     GROUP BY ua.activity;
+    # END; $
+    # LANGUAGE plpgsql;
+    
+    response = supabase.rpc('get_activity_analytics').execute()
+    
+    if not response.data:
+        return {}
+        
+    return {item['activity']: item['count'] for item in response.data}

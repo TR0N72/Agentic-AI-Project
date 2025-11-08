@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 import uvicorn
 from typing import List, Optional
@@ -17,7 +18,8 @@ from auth.dependencies import (
 )
 from auth.api_key_middleware import APIKeyMiddleware, get_api_key_user, require_api_key_roles, require_api_key_permissions
 from auth.rbac_middleware import RBACMiddleware, rbac_protect, admin_only, teacher_or_admin, student_or_above
-from auth.models import User, UserRole, Permission
+from auth.models import User, UserRole, Permission, UserCreate, Token
+from auth.user_service import user_service_singleton
 
 # Import modules
 from llm_engine.llm_service import LLMService
@@ -162,9 +164,15 @@ configure_json_logging(SERVICE_NAME)
 init_tracing(SERVICE_NAME, app)
 
 # Add CORS middleware
+origins = [
+    "http://localhost",
+    "http://localhost:3001",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -207,7 +215,7 @@ agent_service.set_tool_registry(tool_registry)
 # Pydantic models
 class TextRequest(BaseModel):
     text: str
-    model: Optional[str] = "gpt-3.5-turbo"
+    model: Optional[str] = "llama3-8b-8192"
 
 class EmbeddingRequest(BaseModel):
     text: str
@@ -887,115 +895,66 @@ async def refresh_token(refresh_token: str):
         raise HTTPException(status_code=401, detail=str(e))
 
 
-@app.post("/auth/login", tags=["authentication"])
-async def login(credentials: dict):
+@app.post("/auth/login", response_model=Token, tags=["authentication"])
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     User login endpoint.
     
     Authenticates users and returns JWT tokens for API access.
-    Delegates to external authentication service.
     
-    - **email**: User's email address
+    - **username**: User's email address
     - **password**: User's password
     
     Returns JWT access and refresh tokens along with user information.
     """
-    from auth.auth_service import auth_service_singleton
+    user = user_service_singleton.get_user_by_email(form_data.username)
+    if not user or not user_service_singleton.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    email = credentials.get("email")
-    password = credentials.get("password")
-    
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password required")
-    
-    if not auth_service_singleton._configured:
-        # Development mode - return mock tokens
-        if os.getenv("ENVIRONMENT", "").lower() == "development":
-            return {
-                "access_token": "mock-access-token-12345",
-                "refresh_token": "mock-refresh-token-67890",
-                "token_type": "bearer",
-                "expires_in": 3600,
-                "user": {
-                    "id": "dev-user-123",
-                    "email": email,
-                    "username": "devuser",
-                    "roles": ["admin"],
-                    "permissions": ["external_api_access"],
-                    "is_active": True
-                }
-            }
-        
-        raise HTTPException(status_code=500, detail="Auth service not configured")
-    
-    # Call external auth service
-    try:
-        url = f"{auth_service_singleton.base_url.rstrip('/')}/login"
-        payload = {"email": email, "password": password}
-        
-        async with httpx.AsyncClient(timeout=auth_service_singleton.timeout_seconds) as client:
-            resp = await client.post(url, json=payload)
-            
-        if resp.status_code == 200:
-            return resp.json()
-        elif resp.status_code == 401:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        else:
-            raise HTTPException(status_code=502, detail=f"Auth service error: {resp.status_code}")
-            
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail=f"Auth service unreachable: {exc}")
+    access_token = user_service_singleton.create_access_token(
+        data={
+            "sub": str(user.id),
+            "email": user.email,
+            "roles": user.roles.split(','),
+            "permissions": user_service_singleton.get_user_permissions(user)
+        }
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/auth/register", tags=["authentication"])
-async def register(user_data: dict):
+@app.post("/auth/register", response_model=User, tags=["authentication"])
+async def register(user_create: UserCreate):
     """
     User registration endpoint.
     
     Creates a new user account in the system.
-    Delegates to external authentication service.
     
     - **email**: User's email address
     - **password**: User's password
     - **username**: User's username (optional)
-    - **role**: User's role (default: student)
     
-    Returns user information and authentication tokens.
+    Returns user information upon successful registration.
     """
-    from auth.auth_service import auth_service_singleton
+    db_user = user_service_singleton.get_user_by_email(user_create.email)
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     
-    email = user_data.get("email")
-    password = user_data.get("password")
-    username = user_data.get("username")
-    
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password required")
-    
-    if not auth_service_singleton._configured:
-        raise HTTPException(status_code=500, detail="Auth service not configured")
-    
-    # Call external auth service
+    if user_create.username and user_service_singleton.get_user_by_username(user_create.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
+
     try:
-        url = f"{auth_service_singleton.base_url.rstrip('/')}/register"
-        payload = {
-            "email": email,
-            "password": password,
-            "username": username,
-            "role": user_data.get("role", "student")  # Default to student
-        }
-        
-        async with httpx.AsyncClient(timeout=auth_service_singleton.timeout_seconds) as client:
-            resp = await client.post(url, json=payload)
-            
-        if resp.status_code == 201:
-            return resp.json()
-        elif resp.status_code == 409:
-            raise HTTPException(status_code=409, detail="User already exists")
-        else:
-            raise HTTPException(status_code=502, detail=f"Auth service error: {resp.status_code}")
-            
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail=f"Auth service unreachable: {exc}")
+        user = user_service_singleton.register_user(
+            email=user_create.email,
+            password=user_create.password,
+            username=user_create.username
+        )
+        return User(id=user.id, email=user.email, username=user.username, is_active=user.is_active, roles=[UserRole(r) for r in user.roles.split(',')], permissions=user_service_singleton.get_user_permissions(user))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @app.post("/auth/logout")

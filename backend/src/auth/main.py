@@ -9,6 +9,9 @@ import consul
 import os
 from prometheus_fastapi_instrumentator import Instrumentator
 
+import httpx
+from user import schemas as user_schemas
+
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -55,11 +58,30 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 @app.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    # In a real application, you would verify the username and password against the user service.
-    # For this example, we'll just assume the user is valid.
+    user = None
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://user-service:8002/users/email/{form_data.username}")
+            response.raise_for_status()
+            user = user_schemas.User(**await response.json())
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=400, detail="Incorrect username or password")
+        else:
+            raise
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="User service is unavailable")
+
+    if not user or not pwd_context.verify(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=400,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": form_data.username}, expires_delta=access_token_expires
+        data={"sub": user.email}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 

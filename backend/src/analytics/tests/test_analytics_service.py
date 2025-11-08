@@ -1,43 +1,41 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from main import app, get_db, Base
-
-# Use an in-memory SQLite database for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base.metadata.create_all(bind=engine)
-
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
+from analytics.main import app
+from unittest.mock import AsyncMock, patch
 
 client = TestClient(app)
 
-def test_log_activity():
+@pytest.fixture
+def mock_supabase_client():
+    with patch('analytics.dependencies.supabase') as mock_supabase:
+        yield mock_supabase
+
+@pytest.fixture
+def mock_supabase_postgrest_client():
+    with patch('analytics.dependencies.create_client') as mock_create_client:
+        mock_supabase = AsyncMock()
+        mock_create_client.return_value = mock_supabase
+        yield mock_supabase
+
+@pytest.mark.asyncio
+async def test_log_activity(mock_supabase_client):
+    mock_supabase_client.table.return_value.insert.return_value.execute.return_value.data = [{
+        "user_id": 1, "activity": "test activity", "timestamp": "2023-01-01T00:00:00"}]
+    
     response = client.post("/activities/", params={"user_id": 1, "activity": "test activity"})
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == 1
     assert data["activity"] == "test activity"
-    assert "id" in data
 
-def test_get_analytics():
-    # Log some activities first
-    client.post("/activities/", params={"user_id": 1, "activity": "activity1"})
-    client.post("/activities/", params={"user_id": 1, "activity": "activity1"})
-    client.post("/activities/", params={"user_id": 2, "activity": "activity2"})
+@pytest.mark.asyncio
+async def test_get_analytics(mock_supabase_client):
+    mock_supabase_client.rpc.return_value.execute.return_value.data = [
+        {"activity": "activity1", "count": 2},
+        {"activity": "activity2", "count": 1}
+    ]
 
-    # Now get analytics
     response = client.get("/analytics/")
     assert response.status_code == 200
     data = response.json()

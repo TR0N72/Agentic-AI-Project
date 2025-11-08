@@ -1,30 +1,23 @@
-# --- Build Stage ---
-# Use a Node.js image with build tools
-FROM node:22-alpine AS builder
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy package files and install dependencies
-# This layer is cached and only re-runs if package files change
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
+# Using --legacy-peer-deps as it was in the original Dockerfile
 RUN npm install --legacy-peer-deps
 
 # Copy the rest of the source code
 COPY . .
 
-# Build the application
+# Build the application (client and server)
 RUN npm run build
 
-# --- Production Stage ---
-# Use a lightweight web server to serve the static files
-FROM nginx:stable-alpine
+# Expose the port the app runs on
+# The docker-compose.yml maps this to 3001 on the host
+EXPOSE 3000
 
-# Copy the built assets from the "builder" stage
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy the nginx config
-COPY netlify.toml /etc/nginx/conf.d/default.conf
-
-# Expose port 80 and start nginx
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Run the application
+CMD ["npm", "start"]

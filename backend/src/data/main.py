@@ -1,12 +1,11 @@
 
-import os
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from . import models, schemas, database
+from fastapi import FastAPI, HTTPException, Depends
+from . import schemas
+from .dependencies import get_supabase
+from supabase import Client
 import consul
 from prometheus_fastapi_instrumentator import Instrumentator
-
-models.Base.metadata.create_all(bind=database.engine)
+import os
 
 app = FastAPI(
     title="Data Service",
@@ -15,13 +14,6 @@ app = FastAPI(
 )
 
 Instrumentator().instrument(app).expose(app)
-
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def register_service():
     c = consul.Consul(host="consul")
@@ -43,29 +35,27 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/questions/", response_model=schemas.Question)
-def create_question(question: schemas.QuestionCreate, db: Session = Depends(get_db)):
-    db_question = models.Question(**question.dict())
-    db.add(db_question)
-    db.commit()
-    db.refresh(db_question)
-    return db_question
+def create_question(question: schemas.QuestionCreate, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").insert(question.dict()).execute()
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Failed to create question.")
+    return response.data[0]
 
 @app.get("/questions/", response_model=list[schemas.Question])
-def read_questions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    questions = db.query(models.Question).offset(skip).limit(limit).all()
-    return questions
+def read_questions(skip: int = 0, limit: int = 100, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").select("*").range(skip, skip + limit - 1).execute()
+    return response.data if response.data else []
 
 @app.get("/questions/{question_id}", response_model=schemas.Question)
-def read_question(question_id: int, db: Session = Depends(get_db)):
-    db_question = db.query(models.Question).filter(models.Question.id == question_id).first()
-    if db_question is None:
+def read_question(question_id: int, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("questions").select("*").eq("id", question_id).single().execute()
+    if not response.data:
         raise HTTPException(status_code=404, detail="Question not found")
-    return db_question
+    return response.data
 
 @app.post("/activities/", response_model=schemas.UserActivity)
-def log_activity(activity: schemas.UserActivityCreate, db: Session = Depends(get_db)):
-    db_activity = models.UserActivity(**activity.dict())
-    db.add(db_activity)
-    db.commit()
-    db.refresh(db_activity)
-    return db_activity
+def log_activity(activity: schemas.UserActivityCreate, supabase: Client = Depends(get_supabase)):
+    response = supabase.table("user_activities").insert(activity.dict()).execute()
+    if not response.data:
+        raise HTTPException(status_code=500, detail="Failed to log activity.")
+    return response.data[0]

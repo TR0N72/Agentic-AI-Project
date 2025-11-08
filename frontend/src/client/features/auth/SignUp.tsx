@@ -1,26 +1,66 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 export default function SignUp() {
-  const [formData, setFormData] = useState({
-    email: "",
-    nameAccount: "",
-    password: "",
-    confirmPassword: ""
-  });
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const navigate = useNavigate();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === "email") {
+      setEmail(value);
+    } else if (name === "nameAccount") {
+      setUsername(value);
+    } else if (name === "password") {
+      setPassword(value);
+    } else if (name === "confirmPassword") {
+      setConfirmPassword(value);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log("Sign up form submitted:", formData);
+
+    if (!email.trim() || !username.trim() || !password.trim() || !confirmPassword.trim()) {
+      alert("Please fill in all fields.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/auth/register', { // Assuming your AI service runs on port 8000
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email,
+          username: username,
+          password: password,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Registration successful', data);
+        alert('Registration successful! Please log in.');
+        navigate('/login'); // Redirect to login page after successful registration
+      } else {
+        const errorData = await response.json();
+        console.error('Registration failed:', errorData.detail);
+        alert(`Registration failed: ${errorData.detail}`);
+      }
+    } catch (error) {
+      console.error('Network error or unexpected issue:', error);
+      alert('An unexpected error occurred. Please try again.');
+    }
   };
 
   return (
@@ -116,9 +156,12 @@ export default function SignUp() {
               >
                 Login
               </Link>
-              <span className="bg-pinterin-dark-blue text-white px-5 py-3 rounded-full font-dm-sans text-base font-normal leading-6 border border-pinterin-dark-blue opacity-75 cursor-default">
+              <Link 
+                to="/signup"
+                className="bg-pinterin-dark-blue text-white px-5 py-3 rounded-full font-dm-sans text-base font-normal leading-6 border border-pinterin-dark-blue hover:bg-transparent hover:text-pinterin-dark-blue transition-colors"
+              >
                 Sign Up
-              </span>
+              </Link>
             </nav>
 
             {/* Mobile menu button */}
@@ -157,24 +200,24 @@ export default function SignUp() {
                 <input
                   type="email"
                   name="email"
-                  value={formData.email}
+                  value={email}
                   onChange={handleInputChange}
                   placeholder="user@scorelab.com"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
                 />
               </div>
 
-              {/* Name Account Field */}
+              {/* Username Field */}
               <div>
                 <label className="block text-black font-inter text-xl font-normal mb-3">
-                  Name Account
+                  Username
                 </label>
                 <input
                   type="text"
                   name="nameAccount"
-                  value={formData.nameAccount}
+                  value={username}
                   onChange={handleInputChange}
-                  placeholder="Enter your name account"
+                  placeholder="Enter your username"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
                 />
               </div>
@@ -187,7 +230,7 @@ export default function SignUp() {
                 <input
                   type="password"
                   name="password"
-                  value={formData.password}
+                  value={password}
                   onChange={handleInputChange}
                   placeholder="password"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
@@ -202,7 +245,7 @@ export default function SignUp() {
                 <input
                   type="password"
                   name="confirmPassword"
-                  value={formData.confirmPassword}
+                  value={confirmPassword}
                   onChange={handleInputChange}
                   placeholder="password"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"

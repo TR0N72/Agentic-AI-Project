@@ -3,8 +3,8 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, Type
 from dotenv import load_dotenv
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
-from langchain.llms import LlamaCpp
+from langchain_groq import ChatGroq
+from langchain_community.llms import LlamaCpp
 from langchain.schema import HumanMessage, SystemMessage, BaseMessage
 import logging
 from enum import Enum
@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(Enum):
     """Supported LLM providers"""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
+    GROQ = "groq"
     LLAMA = "llama"
 
 class BaseLLMProvider(ABC):
@@ -44,13 +43,13 @@ class BaseLLMProvider(ABC):
         """Get available models for this provider"""
         pass
 
-class OpenAIProvider(BaseLLMProvider):
-    """OpenAI-specific implementation"""
+class GroqProvider(BaseLLMProvider):
+    """Groq-specific implementation"""
     
     def __init__(self):
-        self.default_model = os.getenv("OPENAI_DEFAULT_MODEL", "gpt-3.5-turbo")
-        self.fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-3.5-turbo-16k")
-        self.client = ChatOpenAI(
+        self.default_model = os.getenv("GROQ_DEFAULT_MODEL", "llama3-8b-8192")
+        self.fallback_model = os.getenv("GROQ_FALLBACK_MODEL", "llama3-70b-8192")
+        self.client = ChatGroq(
             model_name=self.default_model,
             temperature=float(os.getenv("TEMPERATURE", 0.7)),
             max_tokens=int(os.getenv("MAX_TOKENS", 1000))
@@ -62,7 +61,7 @@ class OpenAIProvider(BaseLLMProvider):
             response = await self.client.ainvoke(messages)
             return response.content
         except Exception as e:
-            logger.error(f"OpenAI generation error: {str(e)}")
+            logger.error(f"Groq generation error: {str(e)}")
             raise
             
     async def chat_completion(self, messages: List[BaseMessage], **kwargs) -> str:
@@ -70,50 +69,15 @@ class OpenAIProvider(BaseLLMProvider):
             response = await self.client.ainvoke(messages)
             return response.content
         except Exception as e:
-            logger.error(f"OpenAI chat completion error: {str(e)}")
+            logger.error(f"Groq chat completion error: {str(e)}")
             raise
             
     def get_available_models(self) -> Dict[str, str]:
         return {
-            "gpt-3.5-turbo": "GPT-3.5 Turbo",
-            "gpt-4": "GPT-4",
-            "gpt-4-turbo": "GPT-4 Turbo",
-            "gpt-3.5-turbo-16k": "GPT-3.5 Turbo 16K"
-        }
-
-class AnthropicProvider(BaseLLMProvider):
-    """Anthropic Claude-specific implementation"""
-    
-    def __init__(self):
-        self.default_model = os.getenv("CLAUDE_DEFAULT_MODEL", "claude-2.1")
-        self.fallback_model = os.getenv("CLAUDE_FALLBACK_MODEL", "claude-instant-1.2")
-        self.client = ChatAnthropic(
-            model_name=self.default_model,
-            temperature=float(os.getenv("TEMPERATURE", 0.7)),
-            max_tokens=int(os.getenv("MAX_TOKENS", 1000))
-        )
-        
-    async def generate_text(self, prompt: str, **kwargs) -> str:
-        try:
-            messages = [HumanMessage(content=prompt)]
-            response = await self.client.ainvoke(messages)
-            return response.content
-        except Exception as e:
-            logger.error(f"Anthropic generation error: {str(e)}")
-            raise
-            
-    async def chat_completion(self, messages: List[BaseMessage], **kwargs) -> str:
-        try:
-            response = await self.client.ainvoke(messages)
-            return response.content
-        except Exception as e:
-            logger.error(f"Anthropic chat completion error: {str(e)}")
-            raise
-            
-    def get_available_models(self) -> Dict[str, str]:
-        return {
-            "claude-2.1": "Claude 2.1",
-            "claude-instant-1.2": "Claude Instant 1.2"
+            "llama3-8b-8192": "LLaMA3-8b-8192",
+            "llama3-70b-8192": "LLaMA3-70b-8192",
+            "mixtral-8x7b-32768": "Mixtral-8x7b-32768",
+            "gemma-7b-it": "Gemma-7b-it"
         }
 
 class LlamaProvider(BaseLLMProvider):
@@ -160,23 +124,23 @@ class LlamaProvider(BaseLLMProvider):
 class LLMService:
     """
     Service for handling Large Language Model operations with multiple providers and automatic fallback.
-    Supports OpenAI, Anthropic (Claude), and local LLaMA models.
+    Supports Groq and local LLaMA models.
     """
     
     def __init__(self):
         # Initialize providers
         self.providers = {
-            LLMProvider.OPENAI: OpenAIProvider(),
-            LLMProvider.ANTHROPIC: AnthropicProvider(),
-            LLMProvider.LLAMA: LlamaProvider()
+            LLMProvider.GROQ: GroqProvider(),
         }
+        if os.getenv("LLAMA_MODEL_PATH"):
+            self.providers[LLMProvider.LLAMA] = LlamaProvider()
         
         # Set default provider from environment
-        default_provider = os.getenv("DEFAULT_LLM_PROVIDER", "openai")
+        default_provider = os.getenv("DEFAULT_LLM_PROVIDER", "groq")
         self.default_provider = LLMProvider(default_provider)
         
         # Set fallback order from environment
-        fallback_order = os.getenv("LLM_PROVIDER_FALLBACK_ORDER", "openai,anthropic,llama")
+        fallback_order = os.getenv("LLM_PROVIDER_FALLBACK_ORDER", "groq,llama")
         self.fallback_order = [LLMProvider(p) for p in fallback_order.split(",")]
         
         # Set max retries

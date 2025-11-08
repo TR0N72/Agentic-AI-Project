@@ -8,12 +8,14 @@ from dotenv import load_dotenv
 load_dotenv()
 openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Embedding generation is removed. A replacement is needed.
 def generate_embedding(text: str):
-    response = openai.embeddings.create(
-        model="text-embedding-3-large",
-        input=text
-    )
-    return response.data[0].embedding
+    # response = openai.embeddings.create(
+    #     model="text-embedding-3-large",
+    #     input=text
+    # )
+    # return response.data[0].embedding
+    return []
 
 def sync_table_to_qdrant(table_name, id_field, text_fields, collection):
     rows = fetch_all(f"SELECT {id_field}, {', '.join(text_fields)} FROM {table_name}")

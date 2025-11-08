@@ -194,7 +194,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 QDRANT_URL=http://localhost:6333
 
 # AI Services
-OPENAI_API_KEY=your-openai-key
+GROQ_API_KEY=your-groq-key
 HUGGINGFACE_API_KEY=your-huggingface-key
 ```
 

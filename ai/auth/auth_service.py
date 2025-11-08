@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import HTTPException, status
+from jose import jwt, JWTError
 
-from .models import UserRole, Permission, TokenPayload
+from .models import UserRole, Permission, TokenPayload, User
+from .user_service import user_service_singleton, SECRET_KEY, ALGORITHM
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -188,26 +190,41 @@ class AuthService:
             return cached_result
 
         if not self._configured:
-            # In development mode, create a mock user for testing
-            if os.getenv("ENVIRONMENT", "").lower() == "development":
-                logger.info("Token verification: Using development mode mock user")
-                mock_user = {
-                    "sub": "dev-user-123",
-                    "email": "dev@example.com",
-                    "username": "devuser",
-                    "roles": ["admin"],
-                    "permissions": ["external_api_access"],
-                    "is_active": True,
-                    "metadata": {"environment": "development"}
+            # Use local authentication if external service is not configured
+            try:
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                email: str = payload.get("email")
+                if email is None:
+                    raise JWTError("Invalid token: email missing")
+                
+                user_id: str = payload.get("sub")
+                if user_id is None:
+                    raise JWTError("Invalid token: sub (user ID) missing")
+
+                db_user = user_service_singleton.get_user_by_email(email)
+                if db_user is None or str(db_user.id) != user_id:
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user in token")
+                
+                user_roles = [UserRole(role) for role in db_user.roles.split(',') if role in [r.value for r in UserRole]]
+                user_permissions = user_service_singleton.get_user_permissions(db_user)
+
+                user_data = {
+                    "sub": str(db_user.id),
+                    "email": db_user.email,
+                    "username": db_user.username,
+                    "roles": [role.value for role in user_roles],
+                    "permissions": user_permissions,
+                    "is_active": db_user.is_active,
+                    "metadata": {}
                 }
-                self._cache_token_result(token, mock_user)
-                return mock_user
-            
-            logger.error("Token verification failed: Auth service not configured")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Auth service not configured"
-            )
+                self._cache_token_result(token, user_data)
+                return user_data
+            except JWTError as e:
+                logger.warning(f"Local token verification failed: {e}")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+            except Exception as e:
+                logger.error(f"Unexpected error during local token verification: {e}")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error during authentication")
 
         url = f"{self.base_url.rstrip('/')}/verify"
         headers = {
@@ -272,9 +289,10 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
 
         if not self._configured:
+            # If not configured, we don't have a refresh token mechanism locally yet
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Auth service not configured"
+                detail="Auth service not configured and local refresh not implemented"
             )
 
         url = f"{self.base_url.rstrip('/')}/refresh"
@@ -318,6 +336,7 @@ class AuthService:
                 self._cache_timestamps.pop(token, None)
                 return True
             
+            # If not configured and not development, we can't revoke a token we didn't issue
             return False
 
         url = f"{self.base_url.rstrip('/')}/revoke"

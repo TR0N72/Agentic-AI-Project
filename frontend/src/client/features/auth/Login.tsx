@@ -1,20 +1,20 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 export default function Login() {
-  const [formData, setFormData] = useState({
-    email: "",
-    password: ""
-  });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showValidationWarnings, setShowValidationWarnings] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === "email") {
+      setEmail(value);
+    } else if (name === "password") {
+      setPassword(value);
+    }
 
     // Hide validation warnings when user starts typing
     if (showValidationWarnings && value.trim()) {
@@ -22,25 +22,42 @@ export default function Login() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Check if fields are empty and show validation warnings
-    if (!formData.email.trim() || !formData.password.trim()) {
+    if (!email.trim() || !password.trim()) {
       setShowValidationWarnings(true);
       return;
     }
 
-    // Check for dummy credentials
-    if (formData.email === "magangle@gmail.com" && formData.password === "12345") {
-      // Successful login - redirect to dashboard
-      window.location.href = "/dashboard";
-      return;
-    }
+    try {
+      const response = await fetch('http://localhost:8000/auth/login', { // Assuming your AI service runs on port 8000
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded', // FastAPI's OAuth2PasswordRequestForm expects this
+        },
+        body: new URLSearchParams({
+          username: email, // OAuth2PasswordRequestForm uses 'username' for email
+          password: password,
+        }).toString(),
+      });
 
-    // Show error modal for incorrect credentials
-    if (formData.email && formData.password) {
-      setShowErrorModal(true);
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('access_token', data.access_token); // Store the JWT token
+        console.log('Login successful', data);
+        navigate('/dashboard'); // Redirect to dashboard
+      } else {
+        const errorData = await response.json();
+        console.error('Login failed:', errorData.detail);
+        alert(`Login failed: ${errorData.detail}`);
+        setShowErrorModal(true); // Show error modal on failed login
+      }
+    } catch (error) {
+      console.error('Network error or unexpected issue:', error);
+      alert('An unexpected error occurred. Please try again.');
+      setShowErrorModal(true); // Show error modal on network error
     }
   };
 
@@ -185,13 +202,13 @@ export default function Login() {
                 <input
                   type="email"
                   name="email"
-                  value={formData.email}
+                  value={email}
                   onChange={handleInputChange}
                   placeholder="user@scorelab.com"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
                 />
                 {/* Warning Icon */}
-                {showValidationWarnings && !formData.email.trim() && (
+                {showValidationWarnings && !email.trim() && (
                   <div className="absolute right-4 top-[52px] flex items-center justify-center">
                     <svg
                       width="27"
@@ -222,13 +239,13 @@ export default function Login() {
                 <input
                   type="password"
                   name="password"
-                  value={formData.password}
+                  value={password}
                   onChange={handleInputChange}
                   placeholder="password"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
                 />
                 {/* Warning Icon */}
-                {showValidationWarnings && !formData.password.trim() && (
+                {showValidationWarnings && !password.trim() && (
                   <div className="absolute right-4 top-[52px] flex items-center justify-center">
                     <svg
                       width="27"

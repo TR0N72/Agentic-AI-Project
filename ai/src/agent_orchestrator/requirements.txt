@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pika
+python-consul
+prometheus-fastapi-instrumentator
+langchain
+langchain-community
+langchain-groq
+groq
+python-dotenv
+langchain-core
