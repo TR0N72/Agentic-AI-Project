@@ -60,9 +60,7 @@ graph TB
     end
     
     subgraph "AI/ML Providers"
-        OPENAI[OpenAI GPT]
-        ANTHROPIC[Anthropic Claude]
-        LLAMA[Local LLaMA]
+        GROQ[Groq]
         SENTENCE_TRANS[Sentence Transformers]
     end
     
@@ -107,9 +105,7 @@ graph TB
     FASTAPI --> AUTH_SVC
     
     %% AI/ML provider connections
-    LLM --> OPENAI
-    LLM --> ANTHROPIC
-    LLM --> LLAMA
+    LLM --> GROQ
     EMBED --> SENTENCE_TRANS
     EMBED --> OPENAI
     
@@ -213,28 +209,20 @@ nlp-ai-microservice/
 ## 🧩 Module Overview
 
 ### 1. LLM Engine (`llm_engine/`)
-**Purpose**: Handles Large Language Model operations and text generation.
+**Purpose**: Handles Large Language Model operations and text generation using Groq.
 
 **Key Features**:
-- Multi-provider support (OpenAI, Anthropic, LLaMA)
-- Automatic provider fallback on failures
+- Groq provider for fast text generation
 - Environment-based configuration
 - Text generation with customizable models
 - Chat completion with conversation context
-- Model validation and management
 
 **Available Providers & Models**:
-- OpenAI:
-  - GPT-3.5 Turbo (default)
-  - GPT-4
-  - GPT-4 Turbo
-  - GPT-3.5 Turbo 16K
-- Anthropic:
-  - Claude 2.1
-  - Claude Instant 1.2
-- LLaMA:
-  - LLaMA 2 7B Chat
-  - LLaMA 2 13B Chat
+- Groq:
+  - llama3-8b-8192 (default)
+  - llama3-70b-8192
+  - mixtral-8x7b-32768
+  - gemma-7b-it
 
 **API Endpoints**:
 - `POST /llm/generate` - Generate text from prompt
@@ -324,7 +312,7 @@ nlp-ai-microservice/
 ### Prerequisites
 
 - Python 3.11+
-- OpenAI API key (for LLM and embedding features)
+- Groq API key (for LLM features)
 - Docker (optional, for containerized deployment)
 
 ### Environment Setup
@@ -349,25 +337,9 @@ nlp-ai-microservice/
 4. **Set up environment variables**:
    Create a `.env` file in the project root:
    ```env
-   # Default provider configuration
-   DEFAULT_LLM_PROVIDER=openai
-   LLM_PROVIDER_FALLBACK_ORDER=openai,anthropic,llama
-
-   # OpenAI configuration
-   OPENAI_API_KEY=your-openai-key-here
-   OPENAI_DEFAULT_MODEL=gpt-3.5-turbo
-   OPENAI_FALLBACK_MODEL=gpt-3.5-turbo-16k
-
-   # Anthropic configuration
-   ANTHROPIC_API_KEY=your-anthropic-key-here
-   CLAUDE_DEFAULT_MODEL=claude-2.1
-   CLAUDE_FALLBACK_MODEL=claude-instant-1.2
-
-   # LLaMA configuration
-   LLAMA_MODEL_PATH=/path/to/llama/model
-   LLAMA_DEFAULT_MODEL=llama-2-7b-chat
-   LLAMA_N_GPU_LAYERS=32
-   LLAMA_N_THREADS=4
+   # Groq configuration
+   GROQ_API_KEY=your-groq-key-here
+   GROQ_DEFAULT_MODEL=llama3-8b-8192
 
    # Common settings
    MAX_RETRIES=3
@@ -427,51 +399,35 @@ Once the service is running, you can access:
 
 ## 🔧 Usage Examples
 
-### Text Generation with Multiple Providers
+### Text Generation with Groq
 ```python
-from llm_engine.llm_service import LLMService, LLMProvider
+from llm_engine.llm_service import LLMService
 from langchain.schema import HumanMessage, SystemMessage
 
 # Initialize the service
 llm_service = LLMService()
 
-# Basic text generation with default provider
+# Basic text generation
 async def generate_text():
     response = await llm_service.generate_text(
         "Explain quantum computing in simple terms"
     )
     print(response)
 
-# Chat completion with specific provider
-async def chat_with_claude():
+# Chat completion
+async def chat_with_groq():
     messages = [
         SystemMessage(content="You are a helpful AI assistant."),
         HumanMessage(content="What are the key principles of quantum mechanics?")
     ]
     response = await llm_service.chat_completion(
-        messages,
-        provider=LLMProvider.ANTHROPIC
+        messages
     )
     print(response)
 
-# Using fallback chain
-async def generate_with_fallback():
-    try:
-        response = await llm_service.generate_text(
-            "Explain the theory of relativity",
-            provider=LLMProvider.OPENAI  # Will fallback to next provider if fails
-        )
-        print(response)
-    except Exception as e:
-        print(f"All providers failed: {e}")
-
-# Get available models for a specific provider
-models = llm_service.get_available_models(LLMProvider.OPENAI)
-print(f"Available OpenAI models: {models}")
-
-# Get all available models across providers
-all_models = llm_service.get_available_models()
-print(f"All available models: {all_models}")
+# Get available models
+models = llm_service.get_available_models()
+print(f"Available Groq models: {models}")
 ```
 
 ### Generate Embeddings
@@ -636,7 +592,7 @@ For detailed RBAC documentation, see [RBAC_DOCUMENTATION.md](RBAC_DOCUMENTATION.
 
 - **Docker & Docker Compose**: For containerized deployment
 - **Kubernetes**: For production orchestration (optional)
-- **OpenAI API Key**: For LLM functionality
+- **Groq API Key**: For LLM functionality
 - **Redis**: For caching and rate limiting
 - **Elasticsearch**: For BM25 search (optional)
 - **Qdrant**: For vector search (optional)
@@ -647,72 +603,13 @@ Create a `.env` file with the following variables:
 
 ```env
 # Core API Keys
-OPENAI_API_KEY=your_production_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
+GROQ_API_KEY=your_production_groq_key
 
 # Service Configuration
 SERVICE_NAME=nlp-ai-microservice
 LOG_LEVEL=INFO
 ENVIRONMENT=production
-
-# Database URLs
-REDIS_URL=redis://redis:6379/0
-ELASTICSEARCH_URL=http://elasticsearch:9200
-QDRANT_URL=http://qdrant:6333
-
-# External Services
-USER_SERVICE_URL=http://user-service:8001
-QUESTION_SERVICE_URL=http://question-service:8002
-API_GATEWAY_URL=http://api-gateway:8003
-
-# Authentication
-AUTH_SERVICE_URL=http://auth-service:8004
-RBAC_CONFIG_FILE=auth/rbac_config.json
-API_KEYS_CONFIG_FILE=auth/api_keys_config.json
-
-# Rate Limiting
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW_SECONDS=60
-RATE_LIMIT_EXEMPT_PATHS=/health,/metrics,/docs,/openapi.json,/redoc
-
-# Observability
-PROMETHEUS_METRICS_ENDPOINT=/metrics
-OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:14268/api/traces
-OTEL_SERVICE_NAMESPACE=nlp-ai
-
-# TLS Configuration (Optional)
-TLS_ENABLED=false
-TLS_CERT_FILE=/certs/server.crt
-TLS_KEY_FILE=/certs/server.key
 ```
-
-### Docker Compose Deployment
-
-The included `docker-compose.yml` provides a complete development and testing environment:
-
-```bash
-# Start all services
-docker-compose up --build
-
-# Start in background
-docker-compose up -d --build
-
-# View logs
-docker-compose logs -f api
-
-# Stop services
-docker-compose down
-```
-
-**Services included:**
-- **API**: Main NLP/AI microservice
-- **Redis**: Caching and rate limiting
-- **Elasticsearch**: BM25 search engine
-- **Qdrant**: Vector database
-- **Prometheus**: Metrics collection
-- **Grafana**: Metrics visualization
-- **Jaeger**: Distributed tracing
-- **ELK Stack**: Log aggregation
 
 ### Kubernetes Deployment
 
@@ -724,8 +621,7 @@ kubectl create namespace nlp-ai
 
 # Create secrets
 kubectl create secret generic nlp-ai-secrets \
-  --from-literal=OPENAI_API_KEY=your_openai_key \
-  --from-literal=ANTHROPIC_API_KEY=your_anthropic_key \
+  --from-literal=GROQ_API_KEY=your_groq_key \
   --namespace=nlp-ai
 ```
 
@@ -997,8 +893,8 @@ class LLMService:
         try:
             return await self.openai_provider.generate(text, model)
         except Exception:
-            # Fallback to Anthropic
-            return await self.anthropic_provider.generate(text, model)
+            # Fallback to another provider
+            return await self.another_provider.generate(text, model)
 ```
 
 #### 2. Retry Logic

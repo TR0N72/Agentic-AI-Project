@@ -1,13 +1,8 @@
-
 import os
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from . import models, schemas, database
-from passlib.context import CryptContext
+from supabase import create_client, Client
 import consul
 from prometheus_fastapi_instrumentator import Instrumentator
-
-models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(
     title="User Service",
@@ -17,14 +12,12 @@ app = FastAPI(
 
 Instrumentator().instrument(app).expose(app)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_supabase() -> Client:
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        raise ValueError("Supabase URL and service key are required.")
+    return create_client(url, key)
 
 def register_service():
     c = consul.Consul(host="consul")
@@ -45,49 +38,23 @@ def startup_event():
 def health_check():
     return {"status": "ok"}
 
-@app.post("/users/", response_model=schemas.User)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    hashed_password = pwd_context.hash(user.password)
-    db_user = models.User(username=user.username, email=user.email, hashed_password=hashed_password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+@app.get("/users/")
+def read_users(supabase: Client = Depends(get_supabase)):
+    response = supabase.auth.admin.list_users()
+    return response.users
 
-@app.get("/users/", response_model=list[schemas.User])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    users = db.query(models.User).offset(skip).limit(limit).all()
-    return users
-
-@app.get("/users/{user_id}", response_model=schemas.User)
-def read_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
+@app.get("/users/{user_id}")
+def read_user(user_id: str, supabase: Client = Depends(get_supabase)):
+    response = supabase.auth.admin.get_user_by_id(user_id)
+    if not response.user:
         raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+    return response.user
 
-@app.post("/roles/", response_model=schemas.Role)
-def create_role(role: schemas.RoleCreate, db: Session = Depends(get_db)):
-    db_role = db.query(models.Role).filter(models.Role.name == role.name).first()
-    if db_role:
-        raise HTTPException(status_code=400, detail="Role already exists")
-    db_role = models.Role(name=role.name)
-    db.add(db_role)
-    db.commit()
-    db.refresh(db_role)
-    return db_role
-
-@app.post("/users/{user_id}/roles/{role_id}")
-def add_role_to_user(user_id: int, role_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    db_role = db.query(models.Role).filter(models.Role.id == role_id).first()
-    if db_role is None:
-        raise HTTPException(status_code=404, detail="Role not found")
-    db_user.roles.append(db_role)
-    db.commit()
-    return {"message": "Role added to user"}
+@app.get("/users/by_email/{email}")
+def read_user_by_email(email: str, supabase: Client = Depends(get_supabase)):
+    # This is a workaround as supabase-py does not have a direct way to get user by email
+    response = supabase.auth.admin.list_users()
+    for user in response.users:
+        if user.email == email:
+            return user
+    raise HTTPException(status_code=404, detail="User not found")

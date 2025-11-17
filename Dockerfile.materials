@@ -1,0 +1,15 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY backend/src/materials/requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --timeout=600 -r requirements.txt
+
+COPY api_schemas.py .
+COPY backend/src/database.py .
+
+COPY backend/src/materials/ /app/
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8015"]

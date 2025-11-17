@@ -2,20 +2,6 @@
 
 services:
   # Infrastructure Services
-  postgres:
-    image: postgres:13
-    container_name: postgres_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: dbname
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - main_network
-
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -74,11 +60,11 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD-SHELL", "bash -c \"cat < /dev/null > /dev/tcp/localhost/6333 || exit 1\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     networks:
       - main_network
 
@@ -121,7 +107,9 @@ services:
 
   # Application Services
   api_gateway:
-    build: ./backend/src/api_gateway
+    build:
+      context: .
+      dockerfile: Dockerfile.api_gateway
     container_name: api_gateway_service
     ports:
       - "8000:8000"
@@ -135,106 +123,37 @@ services:
     networks:
       - main_network
 
-  auth:
-    build: ./backend/src/auth
-    container_name: auth_service
-    ports:
-      - "8001:8001"
-    environment:
-      - CONTAINER_NAME=auth_service
-      - SECRET_KEY=a-very-secret-key
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-    volumes:
-      - ./backend/src/auth:/app
-    depends_on:
-      - consul
-    networks:
-      - main_network
-
-  user:
-    build: ./backend/src/user
-    container_name: user_service
-    ports:
-      - "8002:8002"
-    environment:
-      - CONTAINER_NAME=user_service
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
-    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
-    volumes:
-      - ./backend/src/user:/app
-    depends_on:
-      - consul
-      - postgres
-    networks:
-      - main_network
-
-  data:
-    build: ./backend/src/data
-    container_name: data_service
-    ports:
-      - "8003:8003"
-    environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
-    command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
-    volumes:
-      - ./backend/src/data:/app
-    depends_on:
-      - consul
-      - postgres
-    networks:
-      - main_network
 
   question:
-    build: ./backend/src/question
+    build:
+      context: .
+      dockerfile: Dockerfile.question
     container_name: question_service
     ports:
       - "8004:8004"
     environment:
       - CONTAINER_NAME=question_service
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - REDIS_HOST=redis
       - RABBITMQ_HOST=rabbitmq_broker
+      - TOPICS_SERVICE_URL=http://topic_service:8013
+      - USER_ANSWERS_SERVICE_URL=http://user_answer_service:8018
     command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
     volumes:
       - ./backend/src/question:/app
     depends_on:
       - consul
-      - postgres
       - redis
       - rabbitmq
     networks:
       - main_network
 
-  assessment:
-    build: ./backend/src/assessment
-    container_name: assessment_service
-    ports:
-      - "8005:8005"
-    environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
-    command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
-    volumes:
-      - ./backend/src/assessment:/app
-    depends_on:
-      - consul
-      - postgres
-    networks:
-      - main_network
 
   embedding:
-    build: ./backend/src/embedding
+    build:
+      context: .
+      dockerfile: Dockerfile.embedding
     container_name: embedding_service
     ports:
       - "8006:8006"
@@ -250,7 +169,9 @@ services:
       - main_network
 
   agent_orchestrator:
-    build: ./backend/src/agent_orchestrator
+    build:
+      context: .
+      dockerfile: Dockerfile.agent_orchestrator
     container_name: agent_orchestrator_service
     ports:
       - "8007:8007"
@@ -266,27 +187,11 @@ services:
     networks:
       - main_network
 
-  analytics:
-    build: ./backend/src/analytics
-    container_name: analytics_service
-    ports:
-      - "8008:8008"
-    environment:
-      - DB_HOST=postgres
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=dbname
-    command: uvicorn main:app --host 0.0.0.0 --port 8008 --reload
-    volumes:
-      - ./backend/src/analytics:/app
-    depends_on:
-      - consul
-      - postgres
-    networks:
-      - main_network
 
   notification:
-    build: ./backend/src/notification
+    build:
+      context: .
+      dockerfile: Dockerfile.notification
     container_name: notification_service
     ports:
       - "8009:8009"
@@ -305,7 +210,9 @@ services:
       - main_network
 
   cms_admin:
-    build: ./backend/src/cms_admin
+    build:
+      context: .
+      dockerfile: Dockerfile.cms_admin
     container_name: cms_admin_service
     ports:
       - "8010:8010"
@@ -317,59 +224,194 @@ services:
     networks:
       - main_network
 
-  database_api:
-    build: ./database
-    container_name: database_api_service
+
+  topics:
+    build:
+      context: .
+      dockerfile: Dockerfile.topics
+    container_name: topic_service
     ports:
-      - "8012:8012"
+      - "8013:8013"
     environment:
-      - CONTAINER_NAME=database_api_service
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=dbname
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: uvicorn api_main:app --host 0.0.0.0 --port 8012 --reload
+      - CONTAINER_NAME=topic_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - MATERIALS_SERVICE_URL=http://material_service:8015
+      - QUESTIONS_SERVICE_URL=http://question_service:8004
+      - EVALUATIONS_SERVICE_URL=http://evaluation_service:8019
+    command: uvicorn main:app --host 0.0.0.0 --port 8013 --reload
     volumes:
-      - ./database:/app
+      - ./backend/src/topics:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
     depends_on:
       - consul
-      - postgres
-      - qdrant
+    networks:
+      - main_network
+
+  users:
+    build:
+      context: .
+      dockerfile: Dockerfile.users
+    container_name: user_service_new
+    ports:
+      - "8014:8014"
+    environment:
+      - CONTAINER_NAME=user_service_new
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - USER_PROGRESS_SERVICE_URL=http://user_progress_service:8017
+      - USER_ANSWERS_SERVICE_URL=http://user_answer_service:8018
+      - EVALUATIONS_SERVICE_URL=http://evaluation_service:8019
+    command: uvicorn main:app --host 0.0.0.0 --port 8014 --reload
+    volumes:
+      - ./backend/src/users:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  materials:
+    build:
+      context: .
+      dockerfile: Dockerfile.materials
+    container_name: material_service
+    ports:
+      - "8015:8015"
+    environment:
+      - CONTAINER_NAME=material_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    command: uvicorn main:app --host 0.0.0.0 --port 8015 --reload
+    volumes:
+      - ./backend/src/materials:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  generated_questions:
+    build:
+      context: .
+      dockerfile: Dockerfile.generated_questions
+    container_name: generated_question_service
+    ports:
+      - "8016:8016"
+    environment:
+      - CONTAINER_NAME=generated_question_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - TOPICS_SERVICE_URL=http://topic_service:8013
+    command: uvicorn main:app --host 0.0.0.0 --port 8016 --reload
+    volumes:
+      - ./backend/src/generated_questions:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  user_progress:
+    build:
+      context: .
+      dockerfile: Dockerfile.user_progress
+    container_name: user_progress_service
+    ports:
+      - "8017:8017"
+    environment:
+      - CONTAINER_NAME=user_progress_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - USERS_SERVICE_URL=http://user_service_new:8014
+    command: uvicorn main:app --host 0.0.0.0 --port 8017 --reload
+    volumes:
+      - ./backend/src/user_progress:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  user_answers:
+    build:
+      context: .
+      dockerfile: Dockerfile.user_answers
+    container_name: user_answer_service
+    ports:
+      - "8018:8018"
+    environment:
+      - CONTAINER_NAME=user_answer_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - USERS_SERVICE_URL=http://user_service_new:8014
+      - QUESTIONS_SERVICE_URL=http://question_service:8004
+    command: uvicorn main:app --host 0.0.0.0 --port 8018 --reload
+    volumes:
+      - ./backend/src/user_answers:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
+    networks:
+      - main_network
+
+  evaluations:
+    build:
+      context: .
+      dockerfile: Dockerfile.evaluations
+    container_name: evaluation_service
+    ports:
+      - "8019:8019"
+    environment:
+      - CONTAINER_NAME=evaluation_service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - USERS_SERVICE_URL=http://user_service_new:8014
+      - TOPICS_SERVICE_URL=http://topic_service:8013
+    command: uvicorn main:app --host 0.0.0.0 --port 8019 --reload
+    volumes:
+      - ./backend/src/evaluations:/app
+      - ./api_schemas.py:/app/api_schemas.py
+      - ./backend/src/database.py:/app/database.py
+    depends_on:
+      - consul
     networks:
       - main_network
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: Dockerfile.frontend
     container_name: frontend_service
     ports:
-      - "3001:3000"
+      - "3001:8080"
     networks:
       - main_network
+    env_file:
+      - ./frontend/.env
 
   ai:
     build:
-      context: ./ai
-      target: production
+      context: .
+      dockerfile: Dockerfile.ai
     container_name: nlp-ai-service
     ports:
       - "8011:8000"
       - "8443:8443"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_ENABLED=true
       - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-600}
-      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
-      - LLM_PROVIDER_FALLBACK_ORDER=${LLM_PROVIDER_FALLBACK_ORDER:-openai,anthropic,llama}
       - TEMPERATURE=${TEMPERATURE:-0.7}
       - MAX_TOKENS=${MAX_TOKENS:-1000}
-      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-3.5-turbo}
-      - OPENAI_FALLBACK_MODEL=${OPENAI_FALLBACK_MODEL:-gpt-3.5-turbo-16k}
+      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-llama3-8b-8192}
       - PROMETHEUS_METRICS_ENDPOINT=/metrics
       - ENABLE_METRICS=true
       - OTEL_METRICS_ENABLED=true
@@ -398,9 +440,9 @@ services:
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - CHROMA_PERSIST_DIRECTORY=${CHROMA_PERSIST_DIRECTORY:-/app/data/chroma}
-      - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8001}
-      - QUESTION_SERVICE_URL=${QUESTION_SERVICE_URL:-http://question-service:8002}
-      - API_GATEWAY_URL=${API_GATEWAY_URL:-http://api-gateway:8003}
+      - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user_service_new:8014}
+      - QUESTION_SERVICE_URL=${QUESTION_SERVICE_URL:-http://question_service:8004}
+      - API_GATEWAY_URL=${API_GATEWAY_URL:-http://api_gateway_service:8000}
     volumes:
       - ./ai/data:/app/data
       - ./ai/logs:/app/logs
@@ -484,7 +526,6 @@ services:
       - main_network
 
 volumes:
-  postgres_data:
   qdrant_data:
   prometheus_data:
   grafana_data:

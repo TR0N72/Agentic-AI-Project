@@ -1,2 +1,0 @@
-# Embedding Model Module
-

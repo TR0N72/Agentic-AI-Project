@@ -10,8 +10,7 @@ services:
       - "8443:8443"  # HTTPS port
     environment:
       # API Keys and Authentication
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       
       # Redis Configuration
       - REDIS_URL=redis://redis:6379/0
@@ -19,12 +18,9 @@ services:
       - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-600}
       
       # LLM Configuration
-      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
-      - LLM_PROVIDER_FALLBACK_ORDER=${LLM_PROVIDER_FALLBACK_ORDER:-openai,anthropic,llama}
       - TEMPERATURE=${TEMPERATURE:-0.7}
       - MAX_TOKENS=${MAX_TOKENS:-1000}
-      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-3.5-turbo}
-      - OPENAI_FALLBACK_MODEL=${OPENAI_FALLBACK_MODEL:-gpt-3.5-turbo-16k}
+      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-llama3-8b-8192}
       
       # Enhanced observability
       - PROMETHEUS_METRICS_ENDPOINT=/metrics

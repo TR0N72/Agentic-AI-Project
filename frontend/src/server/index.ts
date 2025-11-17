@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
 import { handleChat } from "./routes/chat";
+import { handleSignup, handleLogin, handleLogout } from "./routes/auth";
 
 export function createServer() {
   const app = express();
@@ -21,6 +22,11 @@ export function createServer() {
   app.get("/api/demo", handleDemo);
 
   app.post("/api/chat", handleChat);
+
+  // Auth routes
+  app.post("/api/users/signup", handleSignup);
+  app.post("/api/users/login", handleLogin);
+  app.post("/api/users/logout", handleLogout);
 
   return app;
 }

@@ -1,42 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from supabase import create_client, Client
 import os
 import consul
 from prometheus_fastapi_instrumentator import Instrumentator
-
-# Database setup
-DB_USER = os.getenv("DB_USER", "user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "dbname")
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Models
-class Assessment(Base):
-    __tablename__ = "assessments"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
-    score = Column(Integer)
-
-class AssessmentQuestion(Base):
-    __tablename__ = "assessment_questions"
-    id = Column(Integer, primary_key=True, index=True)
-    assessment_id = Column(Integer, ForeignKey('assessments.id'))
-    question_id = Column(Integer)
-    user_answer = Column(String)
-    is_correct = Column(Integer)
-
-    assessment = relationship("Assessment", back_populates="questions")
-
-Assessment.questions = relationship("AssessmentQuestion", back_populates="assessment")
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Assessment Service",
@@ -45,6 +11,13 @@ app = FastAPI(
 )
 
 Instrumentator().instrument(app).expose(app)
+
+def get_supabase() -> Client:
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        raise ValueError("Supabase URL and service key are required.")
+    return create_client(url, key)
 
 def register_service():
     c = consul.Consul(host="consul")
@@ -65,53 +38,46 @@ def startup_event():
 def health_check():
     return {"status": "ok"}
 
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.post("/assessments/")
-def create_assessment(user_id: int, db: Session = Depends(get_db)):
-    db_assessment = Assessment(user_id=user_id, score=0)
-    db.add(db_assessment)
-    db.commit()
-    db.refresh(db_assessment)
-    return db_assessment
+def create_assessment(user_id: int, supabase: Client = Depends(get_supabase)):
+    response = supabase.table('assessments').insert({"user_id": user_id, "score": 0}).execute()
+    if not response.data:
+        raise HTTPException(status_code=400, detail="Failed to create assessment")
+    return response.data[0]
 
 @app.post("/assessments/{assessment_id}/questions")
-def add_question_to_assessment(assessment_id: int, question_id: int, user_answer: str, db: Session = Depends(get_db)):
-    db_assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
-    if not db_assessment:
-        raise HTTPException(status_code=404, detail="Assessment not found")
-
+def add_question_to_assessment(assessment_id: int, question_id: int, user_answer: str, supabase: Client = Depends(get_supabase)):
     # In a real application, you would have logic to check the answer
     # and determine if it is correct. For this example, we'll just
     # assume the answer is correct if it's not empty.
     is_correct = 1 if user_answer else 0
 
-    db_assessment_question = AssessmentQuestion(
-        assessment_id=assessment_id,
-        question_id=question_id,
-        user_answer=user_answer,
-        is_correct=is_correct
-    )
-    db.add(db_assessment_question)
-    db.commit()
+    response = supabase.table('assessment_questions').insert({
+        "assessment_id": assessment_id,
+        "question_id": question_id,
+        "user_answer": user_answer,
+        "is_correct": is_correct
+    }).execute()
+
+    if not response.data:
+        raise HTTPException(status_code=400, detail="Failed to add question to assessment")
 
     # Update the assessment score
     if is_correct:
-        db_assessment.score += 1
-        db.commit()
+        assessment_response = supabase.table('assessments').select("score").eq('id', assessment_id).execute()
+        if assessment_response.data:
+            current_score = assessment_response.data[0]['score']
+            supabase.table('assessments').update({"score": current_score + 1}).eq('id', assessment_id).execute()
 
     return {"message": "Question added to assessment"}
 
 @app.get("/assessments/{assessment_id}")
-def read_assessment(assessment_id: int, db: Session = Depends(get_db)):
-    db_assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
-    if db_assessment is None:
+def read_assessment(assessment_id: int, supabase: Client = Depends(get_supabase)):
+    response = supabase.table('assessments').select("*").eq('id', assessment_id).execute()
+    if not response.data:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    return db_assessment
+    
+    questions_response = supabase.table('assessment_questions').select("*").eq('assessment_id', assessment_id).execute()
+    assessment = response.data[0]
+    assessment['questions'] = questions_response.data
+    return assessment

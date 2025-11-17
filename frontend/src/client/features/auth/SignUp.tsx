@@ -1,13 +1,18 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import apiClient from "../../services/api";
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
     email: "",
-    nameAccount: "",
+    username: "",
     password: "",
     confirmPassword: ""
   });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const navigate = useNavigate();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -17,11 +22,44 @@ export default function SignUp() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log("Sign up form submitted:", formData);
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccess(false);
+    try {
+      await apiClient.post("/users/signup", {
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+      });
+      setSuccess(true);
+    } catch (err: any) {
+      console.error("Sign up error:", err);
+      setError(err.response?.data?.detail || "Failed to sign up. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-pinterin-cream flex items-center justify-center">
+        <div className="w-full max-w-[544px] bg-white rounded-[24px] shadow-lg p-8 text-center">
+          <h1 className="text-black font-inter text-2xl font-bold leading-normal mb-4">
+            Check your email
+          </h1>
+          <p className="text-[#595C5F] font-inter text-lg font-normal">
+            We've sent a confirmation link to your email address. Please follow the link to complete your registration.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-pinterin-cream relative overflow-hidden">
@@ -171,8 +209,8 @@ export default function SignUp() {
                 </label>
                 <input
                   type="text"
-                  name="nameAccount"
-                  value={formData.nameAccount}
+                  name="username"
+                  value={formData.username}
                   onChange={handleInputChange}
                   placeholder="Enter your name account"
                   className="w-full h-[61px] px-6 border-2 border-[#DEE2E6] rounded-[10px] font-inter text-lg text-[#595C5F] placeholder:text-[#595C5F] focus:outline-none focus:border-pinterin-purple transition-colors"
@@ -213,9 +251,10 @@ export default function SignUp() {
               <div className="pt-4">
                 <button
                   type="submit"
+                  disabled={loading}
                   className="w-full h-[55px] bg-pinterin-purple text-white rounded-[10px] font-inter text-2xl font-bold leading-normal hover:bg-pinterin-dark-blue transition-colors"
                 >
-                  Sign Up
+                  {loading ? "Signing up..." : "Sign Up"}
                 </button>
               </div>
             </form>
@@ -235,6 +274,41 @@ export default function SignUp() {
           </div>
         </div>
       </main>
+
+      {/* Error Modal */}
+      {error && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black bg-opacity-43"
+            onClick={() => setError("")}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-white rounded-[10px] w-[699px] h-[459px] flex flex-col items-center justify-center p-8 shadow-lg">
+            {/* Error Title */}
+            <h2 className="text-black font-inter text-[40px] font-bold leading-normal text-center mb-4">
+              Sign Up Failed
+            </h2>
+
+            {/* Error Message */}
+            <p className="text-black font-inter text-xl font-normal leading-normal text-center mb-12">
+              {error}
+            </p>
+
+            {/* OK Button */}
+            <button
+              onClick={() => setError("")}
+              className="relative w-[92px] h-[70px] flex items-center justify-center"
+            >
+              <div className="absolute inset-0 bg-pinterin-purple rounded-[10px] border-4 border-pinterin-purple translate-x-2 translate-y-1" />
+              <span className="relative text-white font-poppins text-[25px] font-bold leading-normal">
+                OK
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

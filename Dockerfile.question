@@ -1,0 +1,18 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY backend/src/question/requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --timeout=600 -r requirements.txt
+
+COPY api_schemas.py .
+COPY backend/src/database.py .
+
+COPY backend/src/question/ /app/
+
+ENV TOPICS_SERVICE_URL="http://topic_service:8013"
+ENV USER_ANSWERS_SERVICE_URL="http://user_answer_service:8018"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]

@@ -1,0 +1,20 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY backend/src/users/requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --timeout=600 -r requirements.txt
+
+COPY api_schemas.py .
+COPY backend/src/database.py .
+
+COPY backend/src/users/ /app/
+
+ENV USER_PROGRESS_SERVICE_URL="http://user_progress_service:8017"
+ENV USER_ANSWERS_SERVICE_URL="http://user_answer_service:8018"
+ENV EVALUATIONS_SERVICE_URL="http://evaluation_service:8019"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8014"]
+

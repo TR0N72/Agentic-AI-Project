@@ -1,20 +1,39 @@
 import { create } from 'zustand';
-
-interface User {
-  name: string;
-  email: string;
-}
+import { Session, User } from '@supabase/supabase-js';
 
 interface AuthState {
-  isAuthenticated: boolean;
+  session: Session | null;
   user: User | null;
-  login: (user: User) => void;
+  setSession: (session: Session | null) => void;
   logout: () => void;
 }
 
+const getInitialSession = () => {
+  const storedSession = localStorage.getItem('session');
+  if (storedSession) {
+    try {
+      return JSON.parse(storedSession);
+    } catch (error) {
+      console.error("Failed to parse session from local storage", error);
+      return null;
+    }
+  }
+  return null;
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
-  isAuthenticated: false,
-  user: null,
-  login: (user) => set({ isAuthenticated: true, user }),
-  logout: () => set({ isAuthenticated: false, user: null }),
+  session: getInitialSession(),
+  user: getInitialSession()?.user ?? null,
+  setSession: (session) => {
+    set({ session, user: session?.user ?? null });
+    if (session) {
+      localStorage.setItem('session', JSON.stringify(session));
+    } else {
+      localStorage.removeItem('session');
+    }
+  },
+  logout: () => {
+    set({ session: null, user: null });
+    localStorage.removeItem('session');
+  }
 }));

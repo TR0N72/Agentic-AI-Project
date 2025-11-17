@@ -1,0 +1,15 @@
+# Core FastAPI and Web Framework
+fastapi
+uvicorn
+pydantic>=2.10.0,<3.0.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+
+# Database
+supabase>=2.5.0
+
+# Service Discovery
+python-consul>=1.1.0
+
+# Observability and Monitoring
+prometheus-fastapi-instrumentator>=7.0.0
